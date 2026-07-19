@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f14">
+<title>zerO 1 — Daily Growth</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./icon-192.png">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<style>
+  :root{
+    --bg:#0b0f14; --card:#131a22; --card2:#1a232e; --line:#233040;
+    --tx:#e8eef4; --dim:#8fa1b3; --green:#22c55e; --gold:#f5b90b; --red:#ef4444;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  body{margin:0; background:var(--bg); color:var(--tx);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    min-height:100vh; padding-bottom:86px}
+  .wrap{max-width:560px; margin:0 auto; padding:16px}
+  header{display:flex; align-items:center; justify-content:space-between; padding:8px 0 4px}
+  .brand{font-size:22px; font-weight:800; letter-spacing:.5px}
+  .brand span{color:var(--green)}
+  .hright{display:flex; align-items:center; gap:10px}
+  .streak{background:var(--card); border:1px solid var(--line); border-radius:20px;
+    padding:6px 12px; font-weight:700; color:var(--gold); font-size:14px}
+  .gear{background:none; border:none; color:var(--dim); font-size:20px; cursor:pointer; padding:4px}
+  .sub{color:var(--dim); font-size:13px; margin:2px 0 14px}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:14px}
+  .rowline{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px}
+  .h2{font-size:13px; font-weight:700; color:var(--dim); text-transform:uppercase; letter-spacing:1px}
+  .pct{font-size:13px; font-weight:700; color:var(--green)}
+  .habit{display:flex; align-items:center; gap:12px; padding:12px 10px; border-radius:10px;
+    cursor:pointer; user-select:none; border:1px solid transparent}
+  .habit:active{background:var(--card2)}
+  .habit .box{width:24px; height:24px; min-width:24px; border-radius:7px; border:2px solid var(--line);
+    display:flex; align-items:center; justify-content:center; font-size:15px; color:#08110a; font-weight:900}
+  .habit.on .box{background:var(--green); border-color:var(--green)}
+  .habit .nm{font-size:15px; font-weight:600}
+  .habit.on .nm{color:var(--dim); text-decoration:line-through}
+  .bar{height:6px; background:var(--card2); border-radius:4px; overflow:hidden; margin-top:8px}
+  .bar i{display:block; height:100%; width:0%; background:var(--green); transition:width .3s}
+  input[type=number],input[type=text],textarea{width:100%; background:var(--card2); border:1px solid var(--line);
+    color:var(--tx); border-radius:10px; padding:12px; font-size:16px; outline:none; font-family:inherit}
+  textarea{resize:vertical; min-height:56px}
+  input:focus,textarea:focus{border-color:var(--green)}
+  .rupee{position:relative}
+  .rupee b{position:absolute; left:12px; top:50%; transform:translateY(-50%); color:var(--gold); font-size:16px}
+  .rupee input{padding-left:30px; font-weight:700}
+  .btns{display:flex; gap:10px; margin-top:10px}
+  .btn{flex:1; background:var(--card2); color:var(--tx); border:1px solid var(--line); border-radius:10px;
+    padding:12px 8px; font-size:13px; font-weight:700; cursor:pointer}
+  .btn:active{transform:scale(.98)}
+  .btn.primary{background:var(--green); border-color:var(--green); color:#04140a; font-size:15px}
+  .btn.gold{border-color:var(--gold); color:var(--gold)}
+  .status{text-align:center; color:var(--dim); font-size:12px; min-height:16px; cursor:pointer}
+  .status.err{color:var(--red)}
+  .foot{text-align:center; margin-top:10px}
+  .foot a{color:var(--dim); font-size:12px; text-decoration:none}
+  label{display:block; text-align:left; font-size:12px; color:var(--dim); margin:10px 0 6px; font-weight:700}
+  .seg{display:flex; gap:8px; margin-top:4px}
+  .seg button{flex:1; background:var(--card2); border:1px solid var(--line); color:var(--dim);
+    border-radius:10px; padding:10px 4px; font-size:13px; font-weight:700; cursor:pointer}
+  .seg button.on{border-color:var(--green); color:var(--green)}
+  /* dashboard */
+  .big{font-size:30px; font-weight:900}
+  .big small{font-size:14px; color:var(--dim); font-weight:600}
+  .chip{display:inline-block; border-radius:14px; padding:3px 10px; font-size:12px; font-weight:800}
+  .chip.up{background:rgba(34,197,94,.12); color:var(--green)}
+  .chip.down{background:rgba(239,68,68,.12); color:var(--red)}
+  canvas{width:100%; height:150px; display:block}
+  .heat{display:grid; grid-template-columns:repeat(10,1fr); gap:5px; margin-top:10px}
+  .heat i{aspect-ratio:1; border-radius:4px; background:var(--card2)}
+  .tgt-edit{display:flex; gap:8px; margin-top:10px}
+  .tgt-edit input{flex:1}
+  .tgt-edit .btn{flex:0 0 84px}
+  /* tabs */
+  .tabbar{position:fixed; bottom:0; left:0; right:0; background:rgba(11,15,20,.92);
+    backdrop-filter:blur(8px); border-top:1px solid var(--line); z-index:50}
+  .tabbar .in{max-width:560px; margin:0 auto; display:flex}
+  .tabbar button{flex:1; background:none; border:none; color:var(--dim); font-size:13px; font-weight:700;
+    padding:12px 0 max(12px, env(safe-area-inset-bottom)); cursor:pointer}
+  .tabbar button.on{color:var(--green)}
+  .tabbar b{display:block; font-size:19px; margin-bottom:2px}
+  /* screens */
+  .screen{display:none}
+  .screen.active{display:block}
+  .center{min-height:70vh; display:flex; flex-direction:column; justify-content:center; text-align:center; gap:14px}
+  .logo{font-size:44px; font-weight:900}
+  .logo span{color:var(--green)}
+  .note{color:var(--dim); font-size:13px; line-height:1.5}
+  dialog{background:var(--card); color:var(--tx); border:1px solid var(--line); border-radius:14px;
+    padding:18px; width:min(92vw,440px)}
+  dialog::backdrop{background:rgba(0,0,0,.6)}
+  .toast{position:fixed; bottom:86px; left:50%; transform:translateX(-50%); background:var(--card2);
+    border:1px solid var(--line); color:var(--tx); padding:10px 16px; border-radius:10px; font-size:14px;
+    opacity:0; transition:opacity .25s; pointer-events:none; max-width:90vw; z-index:99}
+  .toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- SETUP: client id -->
+  <div class="screen center" id="scr-setup">
+    <div class="logo">zer<span>O 1</span></div>
+    <div class="note">One-time setup. Paste the <b>Google OAuth Client ID</b> you created in Google Cloud Console (see README).</div>
+    <div>
+      <label>OAuth Client ID</label>
+      <input type="text" id="in-clientid" placeholder="xxxxx.apps.googleusercontent.com">
+    </div>
+    <button class="btn primary" onclick="saveClientId()">Save & Continue</button>
+  </div>
+
+  <!-- SIGN IN -->
+  <div class="screen center" id="scr-signin">
+    <div class="logo">zer<span>O 1</span></div>
+    <div class="note">₹10Cr by 31 Dec 2026 — body strong, mind calm.<br>Sign in to load today's log.</div>
+    <button class="btn primary" onclick="signIn()">Sign in with Google</button>
+    <div class="note" style="cursor:pointer" onclick="openSettings()">Settings</div>
+  </div>
+
+  <!-- SHEET SETUP -->
+  <div class="screen center" id="scr-sheet">
+    <div class="logo">zer<span>O 1</span></div>
+    <div class="note">Connect your data sheet. Create a new one, or paste the Spreadsheet ID / URL if it already exists (e.g. on your other device).</div>
+    <button class="btn primary" onclick="createSheet()">Create my Growth Log sheet</button>
+    <div>
+      <label>Or existing Spreadsheet ID / URL</label>
+      <input type="text" id="in-sheetid" placeholder="1AbC... or https://docs.google.com/...">
+    </div>
+    <button class="btn" onclick="useExistingSheet()">Use this sheet</button>
+  </div>
+
+  <!-- APP -->
+  <div class="screen" id="scr-app">
+    <header>
+      <div class="brand">zer<span>O 1</span></div>
+      <div class="hright">
+        <div class="streak">🔥 <span id="streak">0</span></div>
+        <button class="gear" onclick="openSettings()">⚙︎</button>
+      </div>
+    </header>
+    <div class="sub" id="dateline">—</div>
+
+    <!-- TODAY TAB -->
+    <div id="tab-today">
+      <div class="card">
+        <div class="rowline"><div class="h2">Habits</div><div class="pct" id="pct">0/0</div></div>
+        <div id="habits"></div>
+        <div class="bar"><i id="bar"></i></div>
+      </div>
+
+      <div class="card">
+        <div class="h2" style="margin-bottom:10px">Earned today</div>
+        <div class="rupee"><b>₹</b><input type="number" id="in-earned" inputmode="decimal" placeholder="0" oninput="onField('earned', this.value)"></div>
+      </div>
+
+      <div class="card">
+        <div class="h2" style="margin-bottom:10px">Tomorrow #1</div>
+        <input type="text" id="in-tmr" placeholder="Single most important task tomorrow" oninput="onField('tmr1', this.value)">
+        <div class="btns">
+          <button class="btn gold" onclick="addToTasks()">＋ Google Tasks</button>
+          <button class="btn" onclick="blockDeepWork()">🎯 Block 6–9 AM</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="h2">Reflection</div>
+        <label>Wins</label>
+        <textarea id="in-wins" rows="2" oninput="onField('wins', this.value)"></textarea>
+        <label>Learnings</label>
+        <textarea id="in-learn" rows="2" oninput="onField('learnings', this.value)"></textarea>
+        <label>Problems</label>
+        <textarea id="in-prob" rows="2" oninput="onField('problems', this.value)"></textarea>
+        <label>Energy</label>
+        <div class="seg" id="seg-energy">
+          <button onclick="setEnergy('High')">High</button>
+          <button onclick="setEnergy('Medium')">Medium</button>
+          <button onclick="setEnergy('Low')">Low</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DASHBOARD TAB -->
+    <div id="tab-dash" style="display:none">
+      <div class="card">
+        <div class="rowline"><div class="h2" id="d-month">This month</div><span id="d-chip"></span></div>
+        <div class="big" id="d-earned">₹0 <small id="d-target">/ set target</small></div>
+        <div class="bar"><i id="d-bar"></i></div>
+        <div class="tgt-edit" id="tgt-edit">
+          <input type="number" id="in-target" inputmode="numeric" placeholder="Monthly target ₹">
+          <button class="btn" onclick="saveTarget()">Set</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="rowline"><div class="h2">Cumulative ₹ vs pace</div></div>
+        <canvas id="cv-line"></canvas>
+      </div>
+
+      <div class="card">
+        <div class="rowline"><div class="h2">Discipline — last 30 days</div><div class="pct" id="d-disc"></div></div>
+        <canvas id="cv-disc" style="height:110px"></canvas>
+        <div class="heat" id="heat"></div>
+      </div>
+
+      <div class="card">
+        <div class="rowline"><div class="h2">Earnings by month</div></div>
+        <canvas id="cv-months"></canvas>
+      </div>
+    </div>
+
+    <div class="status" id="status" onclick="flushSave(true)"></div>
+    <div class="foot"><a id="sheetlink" href="#" target="_blank" rel="noopener">Open Growth Log sheet ↗</a></div>
+  </div>
+
+  <!-- SETTINGS -->
+  <dialog id="dlg">
+    <div class="h2" style="margin-bottom:8px">Settings</div>
+    <label>OAuth Client ID</label>
+    <input type="text" id="set-clientid">
+    <label>Spreadsheet ID</label>
+    <input type="text" id="set-sheetid">
+    <div class="note" style="margin-top:10px">To rename/add/remove habits, edit the <b>header row</b> of the Log sheet — the app adapts automatically. Monthly targets live in the <b>Targets</b> tab.</div>
+    <div class="btns">
+      <button class="btn" onclick="signOut()">Sign out</button>
+      <button class="btn primary" onclick="saveSettings()">Save & reload</button>
+    </div>
+    <div class="btns"><button class="btn" onclick="dlg.close()">Close</button></div>
+  </dialog>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<!-- TAB BAR -->
+<nav class="tabbar" id="tabbar" style="display:none">
+  <div class="in">
+    <button id="tb-today" class="on" onclick="switchTab('today')"><b>☑︎</b>Today</button>
+    <button id="tb-dash" onclick="switchTab('dash')"><b>📈</b>Dashboard</button>
+  </div>
+</nav>
+
+<script src="https://accounts.google.com/gsi/client" async defer onload="gisReady()"></script>
+<script>
+"use strict";
+const SCOPES = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/calendar.events";
+const FIXED = ["Date","Day","Earned Today","Tomorrow #1","Wins","Learnings","Problems","Energy"];
+const DEFAULT_HABITS = ["Deep Work","Workout","Meditation 30 mins","No Junk Food","No Scrolling","Sleep 6hrs","Learned 30 min","Reliability Rep","Calm Under Pressure"];
+const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+let cfg = JSON.parse(localStorage.getItem("z1cfg") || "{}");
+let token = JSON.parse(sessionStorage.getItem("z1tok") || "null");
+let tokenClient = null, gisLoaded = false;
+let headers = [], habits = [], rowsCache = [];
+let targets = {}, targetRows = [];
+let today = null, sheetRowIndex = null, saveTimer = null;
+let curTab = "today";
+
+const $ = s => document.querySelector(s);
+const dlg = document.getElementById("dlg");
+
+function fmt(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function todayStr(){ return fmt(new Date()); }
+function tomorrowStr(){ const d=new Date(); d.setDate(d.getDate()+1); return fmt(d); }
+function tokenValid(){ return token && token.exp > Date.now(); }
+function fmtINR(n){
+  n = Math.round(n);
+  if (Math.abs(n) >= 1e7) return (n/1e7).toFixed(2).replace(/\.?0+$/,"") + "Cr";
+  if (Math.abs(n) >= 1e5) return (n/1e5).toFixed(1).replace(/\.0$/,"") + "L";
+  if (Math.abs(n) >= 1e3) return (n/1e3).toFixed(1).replace(/\.0$/,"") + "k";
+  return String(n);
+}
+
+function showScreen(id){
+  document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+  $("#"+id).classList.add("active");
+  $("#tabbar").style.display = (id === "scr-app") ? "block" : "none";
+}
+function switchTab(t){
+  curTab = t;
+  $("#tab-today").style.display = t==="today" ? "block" : "none";
+  $("#tab-dash").style.display = t==="dash" ? "block" : "none";
+  $("#tb-today").classList.toggle("on", t==="today");
+  $("#tb-dash").classList.toggle("on", t==="dash");
+  if (t === "dash") renderDash();
+}
+function toast(msg, ms){ const t=$("#toast"); t.textContent=msg; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"), ms||2600); }
+function setStatus(msg, err){ const s=$("#status"); s.textContent=msg||""; s.className="status"+(err?" err":""); }
+
+/* ---------- auth ---------- */
+function gisReady(){
+  gisLoaded = true;
+  if (cfg.clientId) initTokenClient();
+  boot();
+}
+function initTokenClient(){
+  if (!gisLoaded || !cfg.clientId) return;
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: cfg.clientId, scope: SCOPES,
+    callback: (t)=>{
+      if (t.error){ toast("Sign-in error: "+t.error); return; }
+      token = { access_token: t.access_token, exp: Date.now() + (t.expires_in - 90) * 1000 };
+      sessionStorage.setItem("z1tok", JSON.stringify(token));
+      start();
+    }
+  });
+}
+function signIn(){
+  if (!tokenClient){ toast("Google script still loading — try again"); return; }
+  tokenClient.requestAccessToken({ prompt: "" });
+}
+function signOut(){
+  if (token) try{ google.accounts.oauth2.revoke(token.access_token, ()=>{}); }catch(e){}
+  token = null; sessionStorage.removeItem("z1tok");
+  dlg.close(); showScreen("scr-signin");
+}
+
+/* ---------- boot ---------- */
+function boot(){
+  if (!cfg.clientId){ showScreen("scr-setup"); return; }
+  if (!tokenClient) initTokenClient();
+  if (tokenValid()) start(); else showScreen("scr-signin");
+}
+function start(){
+  if (!cfg.sheetId){ showScreen("scr-sheet"); return; }
+  showScreen("scr-app");
+  switchTab(curTab);
+  loadData();
+}
+function saveClientId(){
+  const v = $("#in-clientid").value.trim();
+  if (!v){ toast("Paste your Client ID first"); return; }
+  cfg.clientId = v; localStorage.setItem("z1cfg", JSON.stringify(cfg));
+  initTokenClient(); showScreen("scr-signin");
+}
+function parseSheetId(v){
+  const m = v.match(/\/d\/([a-zA-Z0-9-_]+)/); return m ? m[1] : v.trim();
+}
+function useExistingSheet(){
+  const v = $("#in-sheetid").value.trim();
+  if (!v){ toast("Paste the Spreadsheet ID or URL"); return; }
+  cfg.sheetId = parseSheetId(v); localStorage.setItem("z1cfg", JSON.stringify(cfg));
+  start();
+}
+
+/* ---------- api ---------- */
+async function api(url, opts){
+  opts = opts || {};
+  opts.headers = Object.assign({ "Authorization": "Bearer " + (token ? token.access_token : ""), "Content-Type": "application/json" }, opts.headers || {});
+  const r = await fetch(url, opts);
+  if (r.status === 401){
+    token = null; sessionStorage.removeItem("z1tok");
+    showScreen("scr-signin");
+    throw new Error("Session expired — sign in again");
+  }
+  if (!r.ok){
+    const t = await r.text();
+    throw new Error("Error " + r.status + ": " + t.slice(0, 160));
+  }
+  return r.json();
+}
+const SBASE = () => "https://sheets.googleapis.com/v4/spreadsheets/" + cfg.sheetId;
+
+/* ---------- sheet ---------- */
+async function createSheet(){
+  if (!tokenValid()){ signIn(); return; }
+  try{
+    toast("Creating sheet…", 1500);
+    const HEADERS = ["Date","Day", ...DEFAULT_HABITS, "Earned Today","Tomorrow #1","Wins","Learnings","Problems","Energy"];
+    const body = {
+      properties: { title: "zerO 1 — Daily Growth Log" },
+      sheets: [
+        { properties: { title: "Log", gridProperties: { frozenRowCount: 1 } },
+          data: [{ startRow: 0, startColumn: 0,
+            rowData: [{ values: HEADERS.map(h => ({ userEnteredValue: { stringValue: h } })) }] }] },
+        { properties: { title: "Targets" },
+          data: [{ startRow: 0, startColumn: 0,
+            rowData: [{ values: [{userEnteredValue:{stringValue:"Month"}},{userEnteredValue:{stringValue:"Target"}}] }] }] }
+      ]
+    };
+    const js = await api("https://sheets.googleapis.com/v4/spreadsheets", { method: "POST", body: JSON.stringify(body) });
+    cfg.sheetId = js.spreadsheetId; localStorage.setItem("z1cfg", JSON.stringify(cfg));
+    toast("Sheet created ✓");
+    start();
+  }catch(e){ toast(e.message); }
+}
+
+async function ensureSchema(){
+  const missing = FIXED.filter(h => !headers.includes(h) && h !== "Date" && h !== "Day");
+  if (!headers.includes("Date")) return; // unexpected sheet; don't touch
+  if (missing.length){
+    headers = headers.concat(missing);
+    await api(SBASE() + "/values/" + encodeURIComponent("Log!A1") + "?valueInputOption=RAW",
+      { method: "PUT", body: JSON.stringify({ values: [headers] }) });
+  }
+}
+
+async function loadTargets(){
+  try{
+    const js = await api(SBASE() + "/values/" + encodeURIComponent("Targets!A2:B60"));
+    targetRows = js.values || [];
+    targets = {};
+    targetRows.forEach(r => { if (r[0]) targets[r[0]] = parseFloat(r[1]) || 0; });
+  }catch(e){
+    if (String(e.message).includes("Unable to parse range")){
+      try{
+        await api(SBASE() + ":batchUpdate", { method:"POST",
+          body: JSON.stringify({ requests: [{ addSheet: { properties: { title: "Targets" } } }] }) });
+        await api(SBASE() + "/values/" + encodeURIComponent("Targets!A1") + "?valueInputOption=RAW",
+          { method: "PUT", body: JSON.stringify({ values: [["Month","Target"]] }) });
+        targetRows = []; targets = {};
+      }catch(e2){ /* non-fatal */ }
+    }
+  }
+}
+
+async function loadData(){
+  try{
+    setStatus("Loading…");
+    const js = await api(SBASE() + "/values/" + encodeURIComponent("Log!A1:AZ3000"));
+    const v = js.values || [];
+    headers = v[0] && v[0].length ? v[0] : ["Date","Day", ...DEFAULT_HABITS, "Earned Today","Tomorrow #1","Wins","Learnings","Problems","Energy"];
+    rowsCache = v.slice(1);
+    await ensureSchema();
+    habits = headers.filter(h => !FIXED.includes(h));
+    const t = todayStr();
+    const idx = rowsCache.findIndex(r => (r[0]||"") === t);
+    if (idx >= 0){ sheetRowIndex = idx + 2; today = parseRow(rowsCache[idx]); }
+    else {
+      sheetRowIndex = null;
+      today = blankDay();
+    }
+    localStorage.setItem("z1draft-" + t, JSON.stringify(today));
+    await loadTargets();
+    renderToday(); if (curTab === "dash") renderDash();
+    setStatus("");
+  }catch(e){
+    const draft = localStorage.getItem("z1draft-" + todayStr());
+    if (draft){ today = JSON.parse(draft); if (!habits.length) habits = Object.keys(today.checks || {}); renderToday(); }
+    setStatus("⚠ " + e.message + " — tap to retry", true);
+  }
+}
+function blankDay(){
+  const o = { checks:{}, earned:"", tmr1:"", wins:"", learnings:"", problems:"", energy:"" };
+  habits.forEach(h => o.checks[h] = false);
+  return o;
+}
+function parseRow(r){
+  const o = { checks:{}, earned:"", tmr1:"", wins:"", learnings:"", problems:"", energy:"" };
+  headers.forEach((h,i)=>{
+    const val = r[i] === undefined ? "" : String(r[i]);
+    if (h === "Earned Today") o.earned = val;
+    else if (h === "Tomorrow #1") o.tmr1 = val;
+    else if (h === "Wins") o.wins = val;
+    else if (h === "Learnings") o.learnings = val;
+    else if (h === "Problems") o.problems = val;
+    else if (h === "Energy") o.energy = val;
+    else if (!FIXED.includes(h)) o.checks[h] = (val.toUpperCase() === "TRUE");
+  });
+  return o;
+}
+function buildRow(){
+  return headers.map(h=>{
+    if (h === "Date") return todayStr();
+    if (h === "Day") return DAYS[new Date().getDay()];
+    if (h === "Earned Today") return today.earned === "" ? "" : String(today.earned);
+    if (h === "Tomorrow #1") return today.tmr1 || "";
+    if (h === "Wins") return today.wins || "";
+    if (h === "Learnings") return today.learnings || "";
+    if (h === "Problems") return today.problems || "";
+    if (h === "Energy") return today.energy || "";
+    return today.checks[h] ? "TRUE" : "FALSE";
+  });
+}
+async function saveToday(){
+  const row = buildRow();
+  if (sheetRowIndex){
+    await api(SBASE() + "/values/" + encodeURIComponent("Log!A" + sheetRowIndex) + "?valueInputOption=USER_ENTERED",
+      { method: "PUT", body: JSON.stringify({ values: [row] }) });
+    const idx = sheetRowIndex - 2;
+    if (rowsCache[idx]) rowsCache[idx] = row;
+  } else {
+    const js = await api(SBASE() + "/values/" + encodeURIComponent("Log!A1") + ":append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS",
+      { method: "POST", body: JSON.stringify({ values: [row] }) });
+    const m = js.updates && js.updates.updatedRange && js.updates.updatedRange.match(/![A-Z]+(\d+)/);
+    if (m) sheetRowIndex = parseInt(m[1], 10);
+    rowsCache.push(row);
+  }
+  localStorage.setItem("z1draft-" + todayStr(), JSON.stringify(today));
+  setStatus("Saved ✓");
+  setTimeout(()=>{ if ($("#status").textContent === "Saved ✓") setStatus(""); }, 2000);
+}
+function flushSave(immediate){
+  clearTimeout(saveTimer);
+  if (!tokenValid()){ setStatus("⚠ Signed out — tap Sign in", true); showScreen("scr-signin"); return; }
+  const run = ()=> saveToday().catch(e=> setStatus("⚠ " + e.message + " — tap to retry", true));
+  if (immediate) run(); else saveTimer = setTimeout(run, 900);
+}
+function markDirty(){
+  localStorage.setItem("z1draft-" + todayStr(), JSON.stringify(today));
+  setStatus("Saving…");
+  flushSave(false);
+}
+function onField(k, v){ today[k] = v; markDirty(); }
+function setEnergy(v){ today.energy = (today.energy === v) ? "" : v; renderEnergy(); markDirty(); }
+
+/* ---------- today render ---------- */
+function renderToday(){
+  const d = new Date();
+  $("#dateline").textContent = DAYS[d.getDay()] + ", " + d.toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" }) + " — every checked box is a brick in the 10Cr";
+  const list = $("#habits"); list.innerHTML = "";
+  habits.forEach(h=>{
+    const div = document.createElement("div");
+    div.className = "habit" + (today.checks[h] ? " on" : "");
+    div.innerHTML = '<div class="box">' + (today.checks[h] ? "✓" : "") + '</div><div class="nm"></div>';
+    div.querySelector(".nm").textContent = h;
+    div.onclick = ()=>{ today.checks[h] = !today.checks[h]; renderToday(); markDirty(); };
+    list.appendChild(div);
+  });
+  const done = habits.filter(h=>today.checks[h]).length;
+  $("#pct").textContent = done + "/" + habits.length;
+  $("#bar").style.width = habits.length ? (100*done/habits.length) + "%" : "0%";
+  setVal("#in-earned", today.earned);
+  setVal("#in-tmr", today.tmr1);
+  setVal("#in-wins", today.wins);
+  setVal("#in-learn", today.learnings);
+  setVal("#in-prob", today.problems);
+  renderEnergy();
+  $("#streak").textContent = calcStreak();
+  $("#sheetlink").href = "https://docs.google.com/spreadsheets/d/" + cfg.sheetId;
+}
+function setVal(sel, v){ const e = $(sel); if (document.activeElement !== e) e.value = v || ""; }
+function renderEnergy(){
+  document.querySelectorAll("#seg-energy button").forEach(b=>{
+    b.classList.toggle("on", b.textContent === today.energy);
+  });
+}
+
+/* ---------- shared data helpers ---------- */
+function dayMap(){
+  const map = {};
+  rowsCache.forEach(r=>{
+    const dt = r[0]; if (!dt) return;
+    let checked = 0, earned = 0;
+    headers.forEach((h,i)=>{
+      const v = r[i] === undefined ? "" : String(r[i]);
+      if (h === "Earned Today") earned = parseFloat(v) || 0;
+      else if (!FIXED.includes(h) && v.toUpperCase() === "TRUE") checked++;
+    });
+    map[dt] = { checked, earned, real: rowIsReal(r) };
+  });
+  // overlay live local state for today
+  const t = todayStr();
+  const checked = habits.filter(h=>today && today.checks[h]).length;
+  const earned = today ? (parseFloat(today.earned) || 0) : 0;
+  const real = (map[t] && map[t].real) || checked > 0 || earned > 0 || !!(today && ((today.tmr1||"").trim() || (today.wins||"").trim()));
+  map[t] = { checked, earned, real };
+  return map;
+}
+function rowIsReal(r){
+  return headers.some((h,i)=>{
+    const v = r[i] === undefined ? "" : String(r[i]);
+    if (h === "Earned Today") return parseFloat(v) > 0;
+    if (["Tomorrow #1","Wins","Learnings","Problems"].includes(h)) return v.trim().length > 0;
+    if (FIXED.includes(h)) return false;
+    return v.toUpperCase() === "TRUE";
+  });
+}
+function calcStreak(){
+  const map = dayMap();
+  let d = new Date(), s = 0;
+  if (!(map[fmt(d)] && map[fmt(d)].real)) d.setDate(d.getDate()-1);
+  while (map[fmt(d)] && map[fmt(d)].real){ s++; d.setDate(d.getDate()-1); }
+  return s;
+}
+
+/* ---------- dashboard ---------- */
+function renderDash(){
+  const map = dayMap();
+  const now = new Date();
+  const mKey = todayStr().slice(0,7);
+  const daysIn = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+  const dayN = now.getDate();
+  const target = targets[mKey] || 0;
+
+  $("#d-month").textContent = MONTHS[now.getMonth()] + " " + now.getFullYear();
+
+  let cum = 0; const cumSeries = [];
+  for (let i=1; i<=dayN; i++){
+    const key = mKey + "-" + String(i).padStart(2,"0");
+    cum += (map[key] ? map[key].earned : 0);
+    cumSeries.push(cum);
+  }
+  $("#d-earned").innerHTML = "₹" + fmtINR(cum) + ' <small id="d-target"></small>';
+  $("#d-target").textContent = target ? "/ ₹" + fmtINR(target) + " target" : "— set target below";
+  $("#d-bar").style.width = target ? Math.min(100, 100*cum/target) + "%" : "0%";
+  const chip = $("#d-chip");
+  if (target){
+    const paceNow = target * dayN / daysIn;
+    const diff = cum - paceNow;
+    chip.className = "chip " + (diff >= 0 ? "up" : "down");
+    chip.textContent = (diff >= 0 ? "▲ ahead ₹" : "▼ behind ₹") + fmtINR(Math.abs(diff));
+    $("#tgt-edit").style.display = "none";
+  } else {
+    chip.textContent = ""; chip.className = "";
+    $("#tgt-edit").style.display = "flex";
+  }
+
+  drawLine($("#cv-line"), cumSeries, target, daysIn);
+
+  // discipline last 30 days
+  const discVals = [], discDates = [];
+  for (let i=29; i>=0; i--){
+    const d = new Date(); d.setDate(d.getDate()-i);
+    const k = fmt(d);
+    discDates.push(k);
+    discVals.push(map[k] && habits.length ? map[k].checked / habits.length : 0);
+  }
+  const avg = discVals.reduce((a,b)=>a+b,0) / 30;
+  $("#d-disc").textContent = Math.round(avg*100) + "% avg";
+  drawBars($("#cv-disc"), discVals);
+  const heat = $("#heat"); heat.innerHTML = "";
+  discDates.forEach((k,i)=>{
+    const v = discVals[i];
+    const cell = document.createElement("i");
+    if (v > 0) cell.style.background = "rgba(34,197,94," + (0.18 + 0.72*v) + ")";
+    cell.title = k + " — " + Math.round(v*100) + "%";
+    heat.appendChild(cell);
+  });
+
+  // months
+  const mAgg = {};
+  Object.keys(map).forEach(k=>{ const m = k.slice(0,7); mAgg[m] = (mAgg[m]||0) + map[k].earned; });
+  const mKeys = Object.keys(mAgg).sort();
+  drawMonths($("#cv-months"), mKeys, mKeys.map(k=>mAgg[k]));
+}
+
+function ctx2d(c, hCss){
+  const r = c.getBoundingClientRect();
+  const w = r.width, h = hCss || r.height;
+  const dpr = window.devicePixelRatio || 1;
+  c.width = w * dpr; c.height = h * dpr;
+  const x = c.getContext("2d");
+  x.setTransform(dpr,0,0,dpr,0,0);
+  x.clearRect(0,0,w,h);
+  return [x, w, h];
+}
+function drawLine(c, cum, target, daysIn){
+  const [x,w,h] = ctx2d(c);
+  const pad = {l:8, r:8, t:12, b:6};
+  const maxY = Math.max(target || 0, cum.length ? cum[cum.length-1] : 0, 1) * 1.08;
+  const X = i => pad.l + (w-pad.l-pad.r) * (i / Math.max(1, daysIn-1));
+  const Y = v => h-pad.b - (h-pad.t-pad.b) * (v/maxY);
+  if (target){
+    x.strokeStyle = "#f5b90b"; x.setLineDash([5,5]); x.lineWidth = 1.5;
+    x.beginPath(); x.moveTo(X(0), Y(target/daysIn));
+    x.lineTo(X(daysIn-1), Y(target)); x.stroke(); x.setLineDash([]);
+  }
+  if (cum.length){
+    x.strokeStyle = "#22c55e"; x.lineWidth = 2.5; x.beginPath();
+    cum.forEach((v,i)=>{ i ? x.lineTo(X(i), Y(v)) : x.moveTo(X(0), Y(v)); });
+    x.stroke();
+    const g = x.createLinearGradient(0, pad.t, 0, h);
+    g.addColorStop(0, "rgba(34,197,94,.25)"); g.addColorStop(1, "rgba(34,197,94,0)");
+    x.lineTo(X(cum.length-1), h-pad.b); x.lineTo(X(0), h-pad.b); x.closePath();
+    x.fillStyle = g; x.fill();
+    x.fillStyle = "#22c55e";
+    x.beginPath(); x.arc(X(cum.length-1), Y(cum[cum.length-1]), 3.5, 0, 7); x.fill();
+  }
+}
+function drawBars(c, vals){
+  const [x,w,h] = ctx2d(c, 110);
+  const n = vals.length, gap = 3;
+  const bw = (w - gap*(n-1)) / n;
+  vals.forEach((v,i)=>{
+    const bh = Math.max(2, (h-8) * v);
+    x.fillStyle = v > 0 ? "rgba(34,197,94," + (0.35 + 0.6*v) + ")" : "#1a232e";
+    x.beginPath(); x.roundRect(i*(bw+gap), h-bh, bw, bh, 2); x.fill();
+  });
+}
+function drawMonths(c, keys, vals){
+  const [x,w,h] = ctx2d(c);
+  if (!keys.length) return;
+  const maxV = Math.max(...vals, 1);
+  const n = keys.length, gap = 14;
+  const bw = Math.min(56, (w - gap*(n+1)) / n);
+  const total = n*bw + (n-1)*gap;
+  const x0 = (w-total)/2;
+  keys.forEach((k,i)=>{
+    const v = vals[i];
+    const bh = Math.max(3, (h-40) * v/maxV);
+    const bx = x0 + i*(bw+gap);
+    x.fillStyle = "#22c55e";
+    x.beginPath(); x.roundRect(bx, h-22-bh, bw, bh, 4); x.fill();
+    x.fillStyle = "#8fa1b3"; x.font = "11px -apple-system, sans-serif"; x.textAlign = "center";
+    x.fillText(MONTHS[parseInt(k.slice(5,7),10)-1], bx+bw/2, h-8);
+    x.fillStyle = "#e8eef4"; x.font = "bold 11px -apple-system, sans-serif";
+    x.fillText("₹" + fmtINR(v), bx+bw/2, h-28-bh);
+  });
+}
+
+/* ---------- targets ---------- */
+async function saveTarget(){
+  if (!tokenValid()){ signIn(); return; }
+  const v = parseFloat($("#in-target").value);
+  if (!v || v <= 0){ toast("Enter the monthly target in ₹"); return; }
+  const mKey = todayStr().slice(0,7);
+  try{
+    const idx = targetRows.findIndex(r => r[0] === mKey);
+    if (idx >= 0){
+      await api(SBASE() + "/values/" + encodeURIComponent("Targets!A" + (idx+2)) + "?valueInputOption=USER_ENTERED",
+        { method: "PUT", body: JSON.stringify({ values: [[mKey, String(v)]] }) });
+      targetRows[idx] = [mKey, String(v)];
+    } else {
+      await api(SBASE() + "/values/" + encodeURIComponent("Targets!A1") + ":append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS",
+        { method: "POST", body: JSON.stringify({ values: [[mKey, String(v)]] }) });
+      targetRows.push([mKey, String(v)]);
+    }
+    targets[mKey] = v;
+    toast("Target set: ₹" + fmtINR(v) + " ✓");
+    renderDash();
+  }catch(e){ toast(e.message); }
+}
+
+/* ---------- google tasks & calendar ---------- */
+async function addToTasks(){
+  if (!tokenValid()){ signIn(); return; }
+  const title = (today.tmr1||"").trim();
+  if (!title){ toast("Type Tomorrow #1 first"); return; }
+  try{
+    await api("https://tasks.googleapis.com/tasks/v1/lists/@default/tasks",
+      { method:"POST", body: JSON.stringify({ title: "🎯 " + title, notes: "zerO 1 — Tomorrow #1", due: tomorrowStr() + "T00:00:00.000Z" }) });
+    toast("Added to Google Tasks for tomorrow ✓");
+  }catch(e){ toast(e.message); }
+}
+async function blockDeepWork(){
+  if (!tokenValid()){ signIn(); return; }
+  const title = (today.tmr1||"").trim() || "#1 task";
+  try{
+    await api("https://www.googleapis.com/calendar/v3/calendars/primary/events",
+      { method:"POST", body: JSON.stringify({
+        summary: "🎯 Deep Work — " + title,
+        description: "Booked from zerO 1. Phone in another room.",
+        start: { dateTime: tomorrowStr() + "T06:00:00", timeZone: "Asia/Kolkata" },
+        end:   { dateTime: tomorrowStr() + "T09:00:00", timeZone: "Asia/Kolkata" },
+        reminders: { useDefault: false, overrides: [{ method:"popup", minutes: 5 }] }
+      }) });
+    toast("Deep Work blocked tomorrow 6–9 AM ✓");
+  }catch(e){ toast(e.message); }
+}
+
+/* ---------- settings ---------- */
+function openSettings(){
+  $("#set-clientid").value = cfg.clientId || "";
+  $("#set-sheetid").value = cfg.sheetId || "";
+  dlg.showModal();
+}
+function saveSettings(){
+  cfg.clientId = $("#set-clientid").value.trim();
+  cfg.sheetId = parseSheetId($("#set-sheetid").value);
+  localStorage.setItem("z1cfg", JSON.stringify(cfg));
+  location.reload();
+}
+
+/* ---------- init ---------- */
+if ("serviceWorker" in navigator){
+  window.addEventListener("load", ()=> navigator.serviceWorker.register("./sw.js").catch(()=>{}));
+}
+if (document.readyState !== "loading") boot(); else document.addEventListener("DOMContentLoaded", boot);
+</script>
+</body>
+</html>
