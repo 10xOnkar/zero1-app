@@ -393,7 +393,7 @@ function importCfgFromHash(){
   if (!m) return;
   try{
     const o = JSON.parse(atob(decodeURIComponent(m[1])));
-    if (o.clientId) cfg.clientId = String(o.clientId).trim();
+    if (o.clientId) cfg.clientId = cleanClientId(o.clientId);
     if (o.sheetId) cfg.sheetId = String(o.sheetId).trim();
     localStorage.setItem("z1cfg", JSON.stringify(cfg));
     history.replaceState(null, "", location.pathname);
@@ -425,13 +425,16 @@ function start(){
   loadData();
 }
 function saveClientId(){
-  const v = $("#in-clientid").value.trim();
+  const v = cleanClientId($("#in-clientid").value);
   if (!v){ toast("Paste your Client ID first"); return; }
   cfg.clientId = v; localStorage.setItem("z1cfg", JSON.stringify(cfg));
   initTokenClient(); showScreen("scr-signin");
 }
 function parseSheetId(v){
   const m = v.match(/\/d\/([a-zA-Z0-9-_]+)/); return m ? m[1] : v.trim();
+}
+function cleanClientId(v){
+  return String(v||"").trim().replace(/\s+/g,"").replace(/^https?:\/\//i,"").replace(/\/+$/,"");
 }
 function useExistingSheet(){
   const v = $("#in-sheetid").value.trim();
@@ -1044,7 +1047,7 @@ async function saveSettings(){
     else if (!/^\d{4,8}$/.test(p)){ toast("PIN must be 4–8 digits (or OFF)"); return; }
     else { localStorage.setItem("z1pin", await sha256(p)); sessionStorage.setItem("z1unlocked","1"); }
   }
-  cfg.clientId = $("#set-clientid").value.trim();
+  cfg.clientId = cleanClientId($("#set-clientid").value);
   cfg.sheetId = parseSheetId($("#set-sheetid").value);
   localStorage.setItem("z1cfg", JSON.stringify(cfg));
   location.reload();
