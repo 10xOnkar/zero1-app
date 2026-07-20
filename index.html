@@ -157,6 +157,7 @@
     <div class="logo">zer<span>O 1</span></div>
     <div class="note">₹10Cr by 31 Dec 2026 — body strong, mind calm.<br>Sign in to load today's log.</div>
     <button class="btn" onclick="signIn()">Sign in with Google</button>
+    <div class="note" style="cursor:pointer; color:var(--blue)" onclick="signIn(true)">Use a different Google account</div>
     <div class="note" style="cursor:pointer" onclick="openSettings()">Settings</div>
   </div>
 
@@ -276,7 +277,10 @@
     <label class="f">App PIN — 4–8 digits (blank = keep, OFF = remove)</label>
     <input type="text" id="set-pin" inputmode="numeric" autocomplete="off" placeholder="e.g. 2026">
     <div class="note" style="margin-top:10px">Rename/add/remove habits by editing the <b>header row</b> of the Log sheet — the app adapts. Monthly targets live in the <b>Targets</b> tab.</div>
-    <div class="btns"><button class="btn ghost" onclick="applyTheme()">🎨 Apply sheet theme</button></div>
+    <div class="btns">
+      <button class="btn ghost" onclick="applyTheme()">🎨 Apply sheet theme</button>
+      <button class="btn ghost" onclick="switchAccount()">👤 Switch account</button>
+    </div>
     <div class="btns">
       <button class="btn ghost" onclick="signOut()">Sign out</button>
       <button class="btn" onclick="saveSettings()">Save & reload</button>
@@ -361,13 +365,20 @@ function initTokenClient(){
       if (t.error){ toast("Sign-in error: "+t.error); return; }
       token = { access_token: t.access_token, exp: Date.now() + (t.expires_in - 90) * 1000 };
       sessionStorage.setItem("z1tok", JSON.stringify(token));
+      localStorage.setItem("z1auth", "1");
       start();
     }
   });
 }
-function signIn(){
+function signIn(force){
   if (!tokenClient){ toast("Google script still loading — try again"); return; }
-  tokenClient.requestAccessToken({ prompt: "" });
+  const first = !localStorage.getItem("z1auth");
+  tokenClient.requestAccessToken({ prompt: (force || first) ? "select_account" : "" });
+}
+function switchAccount(){
+  dlg.close();
+  token = null; sessionStorage.removeItem("z1tok");
+  signIn(true);
 }
 function signOut(){
   if (token) try{ google.accounts.oauth2.revoke(token.access_token, ()=>{}); }catch(e){}
