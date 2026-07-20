@@ -99,6 +99,16 @@
   .tgt-edit{display:flex; gap:8px; margin-top:12px}
   .tgt-edit input{flex:1}
   .tgt-edit .btn{flex:0 0 auto}
+  /* responsive fill — no dead side space */
+  #tab-today, #tab-dash{display:block}
+  @media (min-width:900px){
+    .wrap{max-width:1100px}
+    #tab-today{display:grid; grid-template-columns:1fr 1fr; gap:14px; align-items:start}
+    #tab-dash{display:grid; grid-template-columns:1fr 1fr; gap:14px; align-items:start}
+    #tab-today .card, #tab-dash .card{margin-bottom:0}
+    #tab-dash .card.c-yellow{grid-column:1 / -1}
+  }
+  details summary{cursor:pointer; color:var(--mut); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; margin-top:12px}
   /* tabs */
   .tabbar{position:fixed; bottom:0; left:0; right:0; background:rgba(0,0,0,.88);
     backdrop-filter:blur(10px); border-top:1px solid var(--border); z-index:50}
@@ -270,23 +280,26 @@
   <!-- SETTINGS -->
   <dialog id="dlg">
     <h2 style="font-size:12px; text-transform:uppercase; letter-spacing:.09em; color:var(--mut); margin:0 0 8px">Settings</h2>
-    <label class="f">OAuth Client ID</label>
-    <input type="text" id="set-clientid">
-    <label class="f">Spreadsheet ID</label>
-    <input type="text" id="set-sheetid">
-    <label class="f">App PIN — 4–8 digits (blank = keep, OFF = remove)</label>
-    <input type="text" id="set-pin" inputmode="numeric" autocomplete="off" placeholder="e.g. 2026">
-    <div class="note" style="margin-top:10px">Rename/add/remove habits by editing the <b>header row</b> of the Log sheet — the app adapts. Monthly targets live in the <b>Targets</b> tab.</div>
-    <div class="btns">
-      <button class="btn ghost" onclick="applyTheme()">🎨 Apply sheet theme</button>
+    <div class="btns" style="margin-top:4px">
       <button class="btn ghost" onclick="switchAccount()">👤 Switch account</button>
+      <button class="btn ghost" onclick="signOut()">Sign out</button>
     </div>
     <div class="btns"><button class="btn" onclick="copySetupLink()">📲 Copy setup link for other device</button></div>
+    <label class="f">App PIN (blank = keep, OFF = remove)</label>
+    <input type="text" id="set-pin" inputmode="numeric" autocomplete="off" placeholder="4–8 digits">
+    <details>
+      <summary>Advanced</summary>
+      <label class="f">OAuth Client ID</label>
+      <input type="text" id="set-clientid">
+      <label class="f">Spreadsheet ID</label>
+      <input type="text" id="set-sheetid">
+      <div class="btns"><button class="btn ghost" onclick="applyTheme()">🎨 Re-apply sheet theme</button></div>
+      <div class="note" style="margin-top:10px">Rename/add/remove habits by editing the <b>header row</b> of the Log sheet — the app adapts.</div>
+    </details>
     <div class="btns">
-      <button class="btn ghost" onclick="signOut()">Sign out</button>
+      <button class="btn ghost" onclick="dlg.close()">Close</button>
       <button class="btn" onclick="saveSettings()">Save & reload</button>
     </div>
-    <div class="btns"><button class="btn ghost" onclick="dlg.close()">Close</button></div>
   </dialog>
 
   <div class="toast" id="toast"></div>
@@ -312,7 +325,7 @@ const USE_KEYS = ["open","habitTap","earned","tmr1","reflection","energy","tasks
 const USAGE_HEADERS = ["Date"].concat(USE_KEYS);
 
 let cfg = JSON.parse(localStorage.getItem("z1cfg") || "{}");
-let token = JSON.parse(sessionStorage.getItem("z1tok") || "null");
+let token = JSON.parse(localStorage.getItem("z1tok") || sessionStorage.getItem("z1tok") || "null");
 let tokenClient = null, gisLoaded = false;
 let headers = [], habits = [], rowsCache = [];
 let targets = {}, targetRows = [];
@@ -343,8 +356,8 @@ function showScreen(id){
 }
 function switchTab(t){
   curTab = t;
-  $("#tab-today").style.display = t==="today" ? "block" : "none";
-  $("#tab-dash").style.display = t==="dash" ? "block" : "none";
+  $("#tab-today").style.display = t==="today" ? "" : "none";
+  $("#tab-dash").style.display = t==="dash" ? "" : "none";
   $("#tb-today").classList.toggle("on", t==="today");
   $("#tb-dash").classList.toggle("on", t==="dash");
   if (t === "dash"){ bump("dash"); renderDash(); }
@@ -365,7 +378,7 @@ function initTokenClient(){
     callback: (t)=>{
       if (t.error){ toast("Sign-in error: "+t.error); return; }
       token = { access_token: t.access_token, exp: Date.now() + (t.expires_in - 90) * 1000 };
-      sessionStorage.setItem("z1tok", JSON.stringify(token));
+      localStorage.setItem("z1tok", JSON.stringify(token));
       localStorage.setItem("z1auth", "1");
       start();
     }
@@ -378,12 +391,12 @@ function signIn(force){
 }
 function switchAccount(){
   dlg.close();
-  token = null; sessionStorage.removeItem("z1tok");
+  token = null; localStorage.removeItem("z1tok");
   signIn(true);
 }
 function signOut(){
   if (token) try{ google.accounts.oauth2.revoke(token.access_token, ()=>{}); }catch(e){}
-  token = null; sessionStorage.removeItem("z1tok");
+  token = null; localStorage.removeItem("z1tok");
   dlg.close(); showScreen("scr-signin");
 }
 
@@ -415,14 +428,36 @@ function boot(){
   if (localStorage.getItem("z1pin") && !sessionStorage.getItem("z1unlocked")){ showScreen("scr-lock"); return; }
   if (!cfg.clientId){ showScreen("scr-setup"); return; }
   if (!tokenClient) initTokenClient();
-  if (tokenValid()) start(); else showScreen("scr-signin");
+  if (tokenValid() || (cfg.sheetId && localStorage.getItem("z1cache"))) start();
+  else showScreen("scr-signin");
 }
 function start(){
   if (!cfg.sheetId){ showScreen("scr-sheet"); return; }
   showScreen("scr-app");
   if (!window.__z1opened){ window.__z1opened = 1; bump("open"); }
+  hydrateFromCache();
   switchTab(curTab);
-  loadData();
+  if (tokenValid()) loadData();
+  else {
+    setStatus("Viewing saved data — tap anywhere to sign in", true);
+    const once = ()=>{ document.removeEventListener("pointerdown", once, true); if (!tokenValid()) signIn(); };
+    document.addEventListener("pointerdown", once, true);
+  }
+}
+function hydrateFromCache(){
+  try{
+    const c = JSON.parse(localStorage.getItem("z1cache") || "null");
+    if (!c || !c.headers || !c.headers.length) return;
+    headers = c.headers; rowsCache = c.rowsCache || [];
+    targets = c.targets || {}; targetRows = c.targetRows || [];
+    habits = headers.filter(h => !FIXED.includes(h));
+    const idx = rowsCache.findIndex(r => (r[0]||"") === todayStr());
+    if (idx >= 0){ sheetRowIndex = idx + 2; today = parseRow(rowsCache[idx]); }
+    else { sheetRowIndex = null; today = blankDay(); }
+    const d = localStorage.getItem("z1draft-" + todayStr());
+    if (d) today = JSON.parse(d);
+    renderToday();
+  }catch(e){}
 }
 function saveClientId(){
   const v = cleanClientId($("#in-clientid").value);
@@ -449,8 +484,9 @@ async function api(url, opts){
   opts.headers = Object.assign({ "Authorization": "Bearer " + (token ? token.access_token : ""), "Content-Type": "application/json" }, opts.headers || {});
   const r = await fetch(url, opts);
   if (r.status === 401){
-    token = null; sessionStorage.removeItem("z1tok");
-    showScreen("scr-signin");
+    token = null; localStorage.removeItem("z1tok");
+    if (document.querySelector("#scr-app.active")) setStatus("⚠ Session refresh needed — tap here", true);
+    else showScreen("scr-signin");
     throw new Error("Session expired — sign in again");
   }
   if (!r.ok){
@@ -522,7 +558,7 @@ async function loadTargets(){
 
 async function loadData(){
   try{
-    setStatus("Loading…");
+    setStatus(rowsCache.length ? "Syncing…" : "Loading…");
     const js = await api(SBASE() + "/values/" + encodeURIComponent("Log!A1:AZ3000"));
     const v = js.values || [];
     headers = v[0] && v[0].length ? v[0] : ["Date","Day", ...DEFAULT_HABITS, "Earned Today","Tomorrow #1","Wins","Learnings","Problems","Energy"];
@@ -539,6 +575,7 @@ async function loadData(){
     else { sheetRowIndex = null; today = blankDay(); }
     localStorage.setItem("z1draft-" + t, JSON.stringify(today));
     await loadTargets();
+    try{ localStorage.setItem("z1cache", JSON.stringify({ headers, rowsCache, targets, targetRows })); }catch(e){}
     renderToday(); if (curTab === "dash") renderDash();
     setStatus("");
     loadTasks(false);
@@ -601,7 +638,7 @@ async function saveToday(){
 }
 function flushSave(immediate){
   clearTimeout(saveTimer);
-  if (!tokenValid()){ setStatus("⚠ Signed out — tap Sign in", true); showScreen("scr-signin"); return; }
+  if (!tokenValid()){ setStatus("Signing in…", true); signIn(); return; }
   const run = ()=> saveToday().catch(e=> setStatus("⚠ " + e.message + " — tap to retry", true));
   if (immediate) run(); else saveTimer = setTimeout(run, 900);
 }
@@ -1073,6 +1110,12 @@ if ("serviceWorker" in navigator){
   window.addEventListener("load", ()=> navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 }
 importCfgFromHash();
+window.addEventListener("resize", ()=>{
+  clearTimeout(window.__z1rz);
+  window.__z1rz = setTimeout(()=>{
+    if (curTab === "dash" && document.querySelector("#scr-app.active")) renderDash();
+  }, 250);
+});
 if (document.readyState !== "loading") boot(); else document.addEventListener("DOMContentLoaded", boot);
 </script>
 </body>
