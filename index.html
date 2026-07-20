@@ -281,6 +281,7 @@
       <button class="btn ghost" onclick="applyTheme()">🎨 Apply sheet theme</button>
       <button class="btn ghost" onclick="switchAccount()">👤 Switch account</button>
     </div>
+    <div class="btns"><button class="btn" onclick="copySetupLink()">📲 Copy setup link for other device</button></div>
     <div class="btns">
       <button class="btn ghost" onclick="signOut()">Sign out</button>
       <button class="btn" onclick="saveSettings()">Save & reload</button>
@@ -384,6 +385,29 @@ function signOut(){
   if (token) try{ google.accounts.oauth2.revoke(token.access_token, ()=>{}); }catch(e){}
   token = null; sessionStorage.removeItem("z1tok");
   dlg.close(); showScreen("scr-signin");
+}
+
+/* ---------- config transfer ---------- */
+function importCfgFromHash(){
+  const m = location.hash.match(/cfg=([A-Za-z0-9+/=_-]+)/);
+  if (!m) return;
+  try{
+    const o = JSON.parse(atob(decodeURIComponent(m[1])));
+    if (o.clientId) cfg.clientId = String(o.clientId).trim();
+    if (o.sheetId) cfg.sheetId = String(o.sheetId).trim();
+    localStorage.setItem("z1cfg", JSON.stringify(cfg));
+    history.replaceState(null, "", location.pathname);
+    toast("Setup imported from link ✓ — now sign in");
+  }catch(e){}
+}
+function copySetupLink(){
+  if (!cfg.clientId){ toast("No Client ID saved yet"); return; }
+  const link = location.origin + location.pathname + "#cfg=" +
+    btoa(JSON.stringify({ clientId: cfg.clientId, sheetId: cfg.sheetId || "" }));
+  const done = ()=> toast("Setup link copied — send it to your other device and open it");
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(link).then(done).catch(()=> window.prompt("Copy this link:", link));
+  } else window.prompt("Copy this link:", link);
 }
 
 /* ---------- boot ---------- */
@@ -1045,6 +1069,7 @@ async function unlock(){
 if ("serviceWorker" in navigator){
   window.addEventListener("load", ()=> navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 }
+importCfgFromHash();
 if (document.readyState !== "loading") boot(); else document.addEventListener("DOMContentLoaded", boot);
 </script>
 </body>
