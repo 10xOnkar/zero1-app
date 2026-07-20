@@ -103,6 +103,15 @@
 <body>
 <div class="wrap">
 
+  <!-- LOCK -->
+  <div class="screen center" id="scr-lock">
+    <div class="logo">zer<span>O 1</span></div>
+    <div class="note">Enter your PIN</div>
+    <input type="password" id="in-pin" inputmode="numeric" autocomplete="off" placeholder="••••" style="text-align:center; font-size:22px; letter-spacing:8px" onkeydown="if(event.key==='Enter')unlock()">
+    <button class="btn primary" onclick="unlock()">Unlock</button>
+    <div class="note" id="lock-err" style="color:var(--red)"></div>
+  </div>
+
   <!-- SETUP: client id -->
   <div class="screen center" id="scr-setup">
     <div class="logo">zer<span>O 1</span></div>
@@ -224,7 +233,10 @@
     <input type="text" id="set-clientid">
     <label>Spreadsheet ID</label>
     <input type="text" id="set-sheetid">
+    <label>App PIN — 4–8 digits (blank = keep current, OFF = remove)</label>
+    <input type="text" id="set-pin" inputmode="numeric" autocomplete="off" placeholder="e.g. 2026">
     <div class="note" style="margin-top:10px">To rename/add/remove habits, edit the <b>header row</b> of the Log sheet — the app adapts automatically. Monthly targets live in the <b>Targets</b> tab.</div>
+    <div class="btns"><button class="btn gold" onclick="applyTheme()">🎨 Apply sheet theme</button></div>
     <div class="btns">
       <button class="btn" onclick="signOut()">Sign out</button>
       <button class="btn primary" onclick="saveSettings()">Save & reload</button>
@@ -251,6 +263,8 @@ const FIXED = ["Date","Day","Earned Today","Tomorrow #1","Wins","Learnings","Pro
 const DEFAULT_HABITS = ["Deep Work","Workout","Meditation 30 mins","No Junk Food","No Scrolling","Sleep 6hrs","Learned 30 min","Reliability Rep","Calm Under Pressure"];
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const USE_KEYS = ["open","habitTap","earned","tmr1","reflection","energy","tasksBtn","calBtn","dash","theme"];
+const USAGE_HEADERS = ["Date"].concat(USE_KEYS);
 
 let cfg = JSON.parse(localStorage.getItem("z1cfg") || "{}");
 let token = JSON.parse(sessionStorage.getItem("z1tok") || "null");
@@ -259,6 +273,8 @@ let headers = [], habits = [], rowsCache = [];
 let targets = {}, targetRows = [];
 let today = null, sheetRowIndex = null, saveTimer = null;
 let curTab = "today";
+let usage = {}, usageDirty = false, usageRows = null, usageRowIndex = null, usageTimer = null;
+try{ usage = JSON.parse(localStorage.getItem("z1use-" + new Date().toISOString().slice(0,10)) || "{}"); }catch(e){ usage = {}; }
 
 const $ = s => document.querySelector(s);
 const dlg = document.getElementById("dlg");
@@ -286,7 +302,7 @@ function switchTab(t){
   $("#tab-dash").style.display = t==="dash" ? "block" : "none";
   $("#tb-today").classList.toggle("on", t==="today");
   $("#tb-dash").classList.toggle("on", t==="dash");
-  if (t === "dash") renderDash();
+  if (t === "dash"){ bump("dash"); renderDash(); }
 }
 function toast(msg, ms){ const t=$("#toast"); t.textContent=msg; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"), ms||2600); }
 function setStatus(msg, err){ const s=$("#status"); s.textContent=msg||""; s.className="status"+(err?" err":""); }
@@ -321,6 +337,7 @@ function signOut(){
 
 /* ---------- boot ---------- */
 function boot(){
+  if (localStorage.getItem("z1pin") && !sessionStorage.getItem("z1unlocked")){ showScreen("scr-lock"); return; }
   if (!cfg.clientId){ showScreen("scr-setup"); return; }
   if (!tokenClient) initTokenClient();
   if (tokenValid()) start(); else showScreen("scr-signin");
@@ -328,6 +345,7 @@ function boot(){
 function start(){
   if (!cfg.sheetId){ showScreen("scr-sheet"); return; }
   showScreen("scr-app");
+  if (!window.__z1opened){ window.__z1opened = 1; bump("open"); }
   switchTab(curTab);
   loadData();
 }
@@ -379,12 +397,17 @@ async function createSheet(){
             rowData: [{ values: HEADERS.map(h => ({ userEnteredValue: { stringValue: h } })) }] }] },
         { properties: { title: "Targets" },
           data: [{ startRow: 0, startColumn: 0,
-            rowData: [{ values: [{userEnteredValue:{stringValue:"Month"}},{userEnteredValue:{stringValue:"Target"}}] }] }] }
+            rowData: [{ values: [{userEnteredValue:{stringValue:"Month"}},{userEnteredValue:{stringValue:"Target"}}] }] }] },
+        { properties: { title: "Usage" },
+          data: [{ startRow: 0, startColumn: 0,
+            rowData: [{ values: USAGE_HEADERS.map(h => ({ userEnteredValue: { stringValue: h } })) }] }] }
       ]
     };
     const js = await api("https://sheets.googleapis.com/v4/spreadsheets", { method: "POST", body: JSON.stringify(body) });
     cfg.sheetId = js.spreadsheetId; localStorage.setItem("z1cfg", JSON.stringify(cfg));
     toast("Sheet created ✓");
+    headers = HEADERS.slice();
+    try{ await applyTheme(true); }catch(e){}
     start();
   }catch(e){ toast(e.message); }
 }
@@ -424,6 +447,10 @@ async function loadData(){
     const js = await api(SBASE() + "/values/" + encodeURIComponent("Log!A1:AZ3000"));
     const v = js.values || [];
     headers = v[0] && v[0].length ? v[0] : ["Date","Day", ...DEFAULT_HABITS, "Earned Today","Tomorrow #1","Wins","Learnings","Problems","Energy"];
+    if (!(v[0] && v[0].length)){
+      await api(SBASE() + "/values/" + encodeURIComponent("Log!A1") + "?valueInputOption=RAW",
+        { method: "PUT", body: JSON.stringify({ values: [headers] }) });
+    }
     rowsCache = v.slice(1);
     await ensureSchema();
     habits = headers.filter(h => !FIXED.includes(h));
@@ -505,8 +532,8 @@ function markDirty(){
   setStatus("Saving…");
   flushSave(false);
 }
-function onField(k, v){ today[k] = v; markDirty(); }
-function setEnergy(v){ today.energy = (today.energy === v) ? "" : v; renderEnergy(); markDirty(); }
+function onField(k, v){ today[k] = v; bump((k==="wins"||k==="learnings"||k==="problems") ? "reflection" : k); markDirty(); }
+function setEnergy(v){ today.energy = (today.energy === v) ? "" : v; bump("energy"); renderEnergy(); markDirty(); }
 
 /* ---------- today render ---------- */
 function renderToday(){
@@ -518,7 +545,7 @@ function renderToday(){
     div.className = "habit" + (today.checks[h] ? " on" : "");
     div.innerHTML = '<div class="box">' + (today.checks[h] ? "✓" : "") + '</div><div class="nm"></div>';
     div.querySelector(".nm").textContent = h;
-    div.onclick = ()=>{ today.checks[h] = !today.checks[h]; renderToday(); markDirty(); };
+    div.onclick = ()=>{ today.checks[h] = !today.checks[h]; bump("habitTap"); renderToday(); markDirty(); };
     list.appendChild(div);
   });
   const done = habits.filter(h=>today.checks[h]).length;
@@ -726,6 +753,112 @@ async function saveTarget(){
   }catch(e){ toast(e.message); }
 }
 
+/* ---------- sheet theme ---------- */
+async function applyTheme(silent){
+  if (!tokenValid()){ if (!silent) signIn(); return; }
+  if (!headers.length){ if (!silent) toast("Wait for data to load first"); return; }
+  try{
+    const meta = await api(SBASE() + "?fields=sheets.properties");
+    const ids = {}; (meta.sheets || []).forEach(s => ids[s.properties.title] = s.properties.sheetId);
+    const logId = ids["Log"];
+    if (logId === undefined) throw new Error("No Log tab found");
+    const GREEN={red:.133,green:.773,blue:.369}, GREEND={red:.082,green:.502,blue:.239},
+      GREENBG={red:.902,green:.969,blue:.925}, GOLD={red:.961,green:.725,blue:.043},
+      GOLDBG={red:.996,green:.953,blue:.82}, GOLDD={red:.573,green:.412,blue:.039},
+      DARK={red:.075,green:.098,blue:.129}, WHITE={red:.91,green:.934,blue:.957},
+      GRAY={red:.72,green:.76,blue:.80}, AMBER={red:.706,green:.325,blue:.035},
+      RED={red:.863,green:.149,blue:.149};
+    const colRange = i => ({ sheetId: logId, startRowIndex: 1, endRowIndex: 1000, startColumnIndex: i, endColumnIndex: i+1 });
+    const req = [];
+    req.push({ updateSheetProperties: { properties: { sheetId: logId,
+      gridProperties: { frozenRowCount: 1, frozenColumnCount: 1 }, tabColor: GREEN },
+      fields: "gridProperties.frozenRowCount,gridProperties.frozenColumnCount,tabColor" } });
+    req.push({ repeatCell: { range: { sheetId: logId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: headers.length },
+      cell: { userEnteredFormat: { backgroundColor: DARK, textFormat: { foregroundColor: WHITE, bold: true }, horizontalAlignment: "CENTER" } },
+      fields: "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)" } });
+    const habitRanges = [];
+    headers.forEach((h,i)=>{
+      let w = 120;
+      if (h === "Date") w = 96; else if (h === "Day") w = 56;
+      else if (h === "Earned Today") w = 110; else if (h === "Energy") w = 90;
+      else if (["Tomorrow #1","Wins","Learnings","Problems"].includes(h)) w = 240;
+      req.push({ updateDimensionProperties: { range: { sheetId: logId, dimension: "COLUMNS", startIndex: i, endIndex: i+1 },
+        properties: { pixelSize: w }, fields: "pixelSize" } });
+      if (!FIXED.includes(h)) habitRanges.push(colRange(i));
+    });
+    if (habitRanges.length){
+      req.push({ addConditionalFormatRule: { index: 0, rule: { ranges: habitRanges,
+        booleanRule: { condition: { type: "CUSTOM_FORMULA", values: [{ userEnteredValue: "=INDIRECT(ADDRESS(ROW(),COLUMN()))=TRUE" }] },
+          format: { backgroundColor: GREENBG, textFormat: { foregroundColor: GREEND, bold: true } } } } } });
+      req.push({ addConditionalFormatRule: { index: 1, rule: { ranges: habitRanges,
+        booleanRule: { condition: { type: "CUSTOM_FORMULA", values: [{ userEnteredValue: "=INDIRECT(ADDRESS(ROW(),COLUMN()))=FALSE" }] },
+          format: { textFormat: { foregroundColor: GRAY } } } } } });
+    }
+    const ei = headers.indexOf("Earned Today");
+    if (ei >= 0) req.push({ addConditionalFormatRule: { index: 2, rule: { ranges: [colRange(ei)],
+      booleanRule: { condition: { type: "NUMBER_GREATER", values: [{ userEnteredValue: "0" }] },
+        format: { backgroundColor: GOLDBG, textFormat: { foregroundColor: GOLDD, bold: true } } } } } });
+    const eni = headers.indexOf("Energy");
+    if (eni >= 0){
+      [["High",GREEND],["Medium",AMBER],["Low",RED]].forEach((p,k)=>{
+        req.push({ addConditionalFormatRule: { index: 3+k, rule: { ranges: [colRange(eni)],
+          booleanRule: { condition: { type: "TEXT_EQ", values: [{ userEnteredValue: p[0] }] },
+            format: { textFormat: { foregroundColor: p[1], bold: true } } } } } });
+      });
+    }
+    if (ids["Targets"] !== undefined){
+      req.push({ updateSheetProperties: { properties: { sheetId: ids["Targets"], tabColor: GOLD }, fields: "tabColor" } });
+      req.push({ repeatCell: { range: { sheetId: ids["Targets"], startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: 2 },
+        cell: { userEnteredFormat: { backgroundColor: DARK, textFormat: { foregroundColor: WHITE, bold: true } } },
+        fields: "userEnteredFormat(backgroundColor,textFormat)" } });
+    }
+    await api(SBASE() + ":batchUpdate", { method: "POST", body: JSON.stringify({ requests: req }) });
+    if (!silent){ toast("Sheet theme applied 🎨"); bump("theme"); }
+  }catch(e){ if (!silent) toast(e.message); }
+}
+
+/* ---------- usage learning (silent analytics → Usage tab) ---------- */
+function bump(k){
+  usage[k] = (usage[k] || 0) + 1;
+  usageDirty = true;
+  try{ localStorage.setItem("z1use-" + todayStr(), JSON.stringify(usage)); }catch(e){}
+  clearTimeout(usageTimer);
+  usageTimer = setTimeout(flushUsage, 5000);
+}
+async function flushUsage(){
+  if (!usageDirty || !tokenValid() || !cfg.sheetId) return;
+  try{
+    if (usageRows === null){
+      try{
+        const js = await api(SBASE() + "/values/" + encodeURIComponent("Usage!A1:L400"));
+        usageRows = (js.values || []).slice(1);
+      }catch(e){
+        if (String(e.message).includes("Unable to parse range")){
+          await api(SBASE() + ":batchUpdate", { method: "POST",
+            body: JSON.stringify({ requests: [{ addSheet: { properties: { title: "Usage" } } }] }) });
+          await api(SBASE() + "/values/" + encodeURIComponent("Usage!A1") + "?valueInputOption=RAW",
+            { method: "PUT", body: JSON.stringify({ values: [USAGE_HEADERS] }) });
+          usageRows = [];
+        } else throw e;
+      }
+      const i = usageRows.findIndex(r => (r[0]||"") === todayStr());
+      usageRowIndex = i >= 0 ? i + 2 : null;
+    }
+    const row = [todayStr()].concat(USE_KEYS.map(k => usage[k] || 0));
+    if (usageRowIndex){
+      await api(SBASE() + "/values/" + encodeURIComponent("Usage!A" + usageRowIndex) + "?valueInputOption=RAW",
+        { method: "PUT", body: JSON.stringify({ values: [row] }) });
+    } else {
+      const js = await api(SBASE() + "/values/" + encodeURIComponent("Usage!A1") + ":append?valueInputOption=RAW&insertDataOption=INSERT_ROWS",
+        { method: "POST", body: JSON.stringify({ values: [row] }) });
+      const m = js.updates && js.updates.updatedRange && js.updates.updatedRange.match(/![A-Z]+(\d+)/);
+      if (m) usageRowIndex = parseInt(m[1], 10);
+      usageRows.push(row);
+    }
+    usageDirty = false;
+  }catch(e){ /* analytics must never block the app */ }
+}
+
 /* ---------- google tasks & calendar ---------- */
 async function addToTasks(){
   if (!tokenValid()){ signIn(); return; }
@@ -735,6 +868,7 @@ async function addToTasks(){
     await api("https://tasks.googleapis.com/tasks/v1/lists/@default/tasks",
       { method:"POST", body: JSON.stringify({ title: "🎯 " + title, notes: "zerO 1 — Tomorrow #1", due: tomorrowStr() + "T00:00:00.000Z" }) });
     toast("Added to Google Tasks for tomorrow ✓");
+    bump("tasksBtn");
   }catch(e){ toast(e.message); }
 }
 async function blockDeepWork(){
@@ -750,6 +884,7 @@ async function blockDeepWork(){
         reminders: { useDefault: false, overrides: [{ method:"popup", minutes: 5 }] }
       }) });
     toast("Deep Work blocked tomorrow 6–9 AM ✓");
+    bump("calBtn");
   }catch(e){ toast(e.message); }
 }
 
@@ -757,13 +892,35 @@ async function blockDeepWork(){
 function openSettings(){
   $("#set-clientid").value = cfg.clientId || "";
   $("#set-sheetid").value = cfg.sheetId || "";
+  $("#set-pin").value = "";
   dlg.showModal();
 }
-function saveSettings(){
+async function saveSettings(){
+  const p = $("#set-pin").value.trim();
+  if (p){
+    if (p.toUpperCase() === "OFF"){ localStorage.removeItem("z1pin"); toast("PIN removed"); }
+    else if (!/^\d{4,8}$/.test(p)){ toast("PIN must be 4–8 digits (or OFF)"); return; }
+    else { localStorage.setItem("z1pin", await sha256(p)); sessionStorage.setItem("z1unlocked","1"); }
+  }
   cfg.clientId = $("#set-clientid").value.trim();
   cfg.sheetId = parseSheetId($("#set-sheetid").value);
   localStorage.setItem("z1cfg", JSON.stringify(cfg));
   location.reload();
+}
+async function sha256(s){
+  const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("z1:" + s));
+  return Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2, "0")).join("");
+}
+async function unlock(){
+  const h = await sha256($("#in-pin").value.trim());
+  if (h === localStorage.getItem("z1pin")){
+    sessionStorage.setItem("z1unlocked", "1");
+    $("#in-pin").value = ""; $("#lock-err").textContent = "";
+    boot();
+  } else {
+    $("#lock-err").textContent = "Wrong PIN — try again";
+    $("#in-pin").value = "";
+  }
 }
 
 /* ---------- init ---------- */
