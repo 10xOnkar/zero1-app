@@ -194,7 +194,7 @@
     <!-- TODAY TAB -->
     <div id="tab-today">
       <div class="card c-green">
-        <h2><span>Daily Discipline Checklist</span> <span class="pill" id="pct">0/0</span></h2>
+        <h2><span>Daily Discipline Checklist</span> <span class="pill" id="pct">0/0</span> <span class="pill" id="editHabitsBtn" style="cursor:pointer; display:none; background:rgba(124,196,255,.14); color:var(--blue)" onclick="openEditHabits()">✏️ Edit</span></h2>
         <div id="habits"></div>
       </div>
 
@@ -300,6 +300,18 @@
     </div>
   </dialog>
 
+  <!-- EDIT HABITS (Sundays only) -->
+  <dialog id="dlgHabits">
+    <h2 style="font-size:12px; text-transform:uppercase; letter-spacing:.09em; color:var(--mut); margin:0 0 8px">Edit Habits — Sunday reset</h2>
+    <div class="note" style="margin-bottom:8px">Rename, remove, or add habit columns. Saves straight to your Log sheet.</div>
+    <div id="habitEditList"></div>
+    <div class="addrow"><input type="text" id="newHabitName" placeholder="Add a new habit"><button class="btn" onclick="addHabitRow()">Add</button></div>
+    <div class="btns">
+      <button class="btn ghost" onclick="dlgHabits.close()">Cancel</button>
+      <button class="btn" onclick="saveHabitEdits()">Save changes</button>
+    </div>
+  </dialog>
+
   <div class="toast" id="toast"></div>
 </div>
 
@@ -316,7 +328,7 @@
 "use strict";
 const SCOPES = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/calendar.events";
 const FIXED = ["Date","Day","Earned Today","Tomorrow #1","Wins","Learnings","Problems","Energy"];
-const DEFAULT_HABITS = ["Deep Work","Workout","Meditation 30 mins","No Junk Food","No Scrolling","Sleep 6hrs","Learned 30 min","Reliability Rep","Calm Under Pressure"];
+const DEFAULT_HABITS = ["Deep Work","Workout","Meditation 30 mins","No Scrolling","Sleep 6hrs","Learned 30 min","Reflection Writing"];
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const USE_KEYS = ["open","habitTap","earned","tmr1","reflection","energy","tasksBtn","calBtn","dash","theme"];
@@ -335,6 +347,8 @@ try{ usage = JSON.parse(localStorage.getItem("z1use-" + new Date().toISOString()
 
 const $ = s => document.querySelector(s);
 const dlg = document.getElementById("dlg");
+const dlgHabits = document.getElementById("dlgHabits");
+let editHabits = [];
 
 function fmt(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 function todayStr(){ return fmt(new Date()); }
@@ -652,6 +666,7 @@ function setEnergy(v){ today.energy = (today.energy === v) ? "" : v; bump("energ
 function renderToday(){
   const d = new Date();
   $("#dateline").textContent = DAYS[d.getDay()] + ", " + d.toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" }) + " — every step is a brick in the 10Cr";
+  $("#editHabitsBtn").style.display = (d.getDay() === 0) ? "" : "none";
   const list = $("#habits"); list.innerHTML = "";
   habits.forEach(h=>{
     const div = document.createElement("div");
@@ -677,6 +692,73 @@ function renderEnergy(){
   document.querySelectorAll("#seg-energy button").forEach(b=>{
     b.classList.toggle("on", b.textContent === today.energy);
   });
+}
+
+/* ---------- edit habits (Sundays only) ---------- */
+function openEditHabits(){
+  if (new Date().getDay() !== 0){ toast("Habit editing opens on Sundays"); return; }
+  editHabits = habits.map(h => ({ orig: h, name: h }));
+  $("#newHabitName").value = "";
+  renderHabitEditList();
+  dlgHabits.showModal();
+}
+function renderHabitEditList(){
+  const list = $("#habitEditList"); list.innerHTML = "";
+  editHabits.forEach((e,i)=>{
+    const row = document.createElement("div");
+    row.className = "addrow"; row.style.marginBottom = "6px";
+    row.innerHTML = '<input type="text" style="flex:1"><button class="btn ghost" style="padding:6px 10px">✕</button>';
+    const inp = row.querySelector("input"); inp.value = e.name;
+    inp.oninput = ()=>{ editHabits[i].name = inp.value; };
+    row.querySelector("button").onclick = ()=>{ editHabits.splice(i,1); renderHabitEditList(); };
+    list.appendChild(row);
+  });
+}
+function addHabitRow(){
+  const v = $("#newHabitName").value.trim();
+  if (!v) return;
+  if (editHabits.some(e=>e.name===v)){ toast("Already in list"); return; }
+  editHabits.push({ orig: null, name: v });
+  $("#newHabitName").value = "";
+  renderHabitEditList();
+}
+async function saveHabitEdits(){
+  const cleaned = editHabits.map(e=>({ orig:e.orig, name:e.name.trim() })).filter(e=>e.name);
+  const names = cleaned.map(e=>e.name);
+  if (!names.length){ toast("Add at least one habit"); return; }
+  if (names.some((n,i)=>names.indexOf(n)!==i)){ toast("Duplicate habit names"); return; }
+  if (names.some(n=>FIXED.includes(n))){ toast("Name clashes with a fixed column"); return; }
+  if (!tokenValid()){ signIn(); return; }
+  try{
+    toast("Saving habit changes…", 1500);
+    const removedNames = habits.filter(h => !cleaned.some(e=>e.orig===h));
+    if (removedNames.length){
+      const meta = await api(SBASE() + "?fields=sheets.properties");
+      const logSheet = (meta.sheets||[]).find(s=>s.properties.title==="Log");
+      const logId = logSheet && logSheet.properties.sheetId;
+      const idxs = removedNames.map(h=>headers.indexOf(h)).filter(i=>i>=0).sort((a,b)=>b-a);
+      const req = idxs.map(i=>({ deleteDimension: { range: { sheetId: logId, dimension:"COLUMNS", startIndex:i, endIndex:i+1 } } }));
+      if (req.length) await api(SBASE() + ":batchUpdate", { method:"POST", body: JSON.stringify({ requests: req }) });
+      idxs.forEach(i=> headers.splice(i,1));
+    }
+    cleaned.forEach(e=>{
+      if (e.orig && e.orig !== e.name){
+        const i = headers.indexOf(e.orig);
+        if (i>=0) headers[i] = e.name;
+      }
+    });
+    cleaned.filter(e=>!e.orig).forEach(e=>{ if (!headers.includes(e.name)) headers.push(e.name); });
+    await api(SBASE() + "/values/" + encodeURIComponent("Log!A1") + "?valueInputOption=RAW",
+      { method:"PUT", body: JSON.stringify({ values:[headers] }) });
+    const newChecks = {};
+    cleaned.forEach(e=>{ newChecks[e.name] = e.orig ? !!today.checks[e.orig] : false; });
+    today.checks = newChecks;
+    habits = names.slice();
+    dlgHabits.close();
+    renderToday();
+    markDirty();
+    toast("Habits updated ✓");
+  }catch(e){ toast(e.message); }
 }
 
 /* ---------- google tasks two-way sync ---------- */
