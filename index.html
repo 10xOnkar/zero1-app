@@ -99,12 +99,10 @@
   .tgt-edit{display:flex; gap:8px; margin-top:12px}
   .tgt-edit input{flex:1}
   .tgt-edit .btn{flex:0 0 auto}
-  /* responsive fill — even 2-col grid, no masonry gaps */
+  /* desktop: same single-column stack as mobile — avoids column-packing gaps entirely */
   #tab-today, #tab-dash{display:block}
   @media (min-width:900px){
-    .wrap{max-width:1100px}
-    #tab-today, #tab-dash{display:grid; grid-template-columns:1fr 1fr; gap:14px; align-items:start}
-    #tab-today .card, #tab-dash .card{margin-bottom:0; width:100%}
+    .wrap{max-width:640px}
   }
   details summary{cursor:pointer; color:var(--mut); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; margin-top:12px}
   /* tabs */
@@ -220,13 +218,8 @@
       </div>
 
       <div class="card c-red">
-        <h2>Reflection</h2>
-        <label class="f" style="margin-top:0">Wins</label>
-        <textarea id="in-wins" rows="2" oninput="onField('wins', this.value)"></textarea>
-        <label class="f">Learnings</label>
-        <textarea id="in-learn" rows="2" oninput="onField('learnings', this.value)"></textarea>
-        <label class="f">Problems</label>
-        <textarea id="in-prob" rows="2" oninput="onField('problems', this.value)"></textarea>
+        <h2><span>Reflection</span> <span class="pill" id="editReflBtn" style="cursor:pointer; display:none; background:rgba(124,196,255,.14); color:var(--blue)" onclick="openEditRefl()">✏️ Edit</span></h2>
+        <div id="reflFieldsBox"></div>
         <label class="f">Energy</label>
         <div class="seg" id="seg-energy">
           <button onclick="setEnergy('High')">High</button>
@@ -317,6 +310,18 @@
     </div>
   </dialog>
 
+  <!-- EDIT REFLECTION FIELDS (Sundays only) -->
+  <dialog id="dlgRefl">
+    <h2 style="font-size:12px; text-transform:uppercase; letter-spacing:.09em; color:var(--mut); margin:0 0 8px">Edit Reflection Fields — Sunday reset</h2>
+    <div class="note" style="margin-bottom:8px">Rename, remove, or add reflection prompts. Energy stays fixed. Saves straight to your Log sheet.</div>
+    <div id="reflEditList"></div>
+    <div class="addrow"><input type="text" id="newReflName" placeholder="Add a new reflection prompt"><button class="btn" onclick="addReflRow()">Add</button></div>
+    <div class="btns">
+      <button class="btn ghost" onclick="dlgRefl.close()">Cancel</button>
+      <button class="btn" onclick="saveReflEdits()">Save changes</button>
+    </div>
+  </dialog>
+
   <div class="toast" id="toast"></div>
 </div>
 
@@ -332,8 +337,13 @@
 <script>
 "use strict";
 const SCOPES = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/calendar.events";
-const FIXED = ["Date","Day","Earned Today","Tomorrow #1","Wins","Learnings","Problems","Energy"];
+const FIXED = ["Date","Day","Earned Today","Tomorrow #1","Energy"];
 const DEFAULT_HABITS = ["Deep Work","Workout","Meditation 30 mins","No Scrolling","Sleep 6hrs","Learned 30 min","Reflection Writing"];
+const REFL_PREFIX = "📝 ";
+const LEGACY_REFL = ["Wins","Learnings","Problems"];
+const DEFAULT_REFL = LEGACY_REFL.slice();
+function isReflHeader(h){ return h.indexOf(REFL_PREFIX) === 0 || LEGACY_REFL.includes(h); }
+function reflLabel(h){ return h.indexOf(REFL_PREFIX) === 0 ? h.slice(REFL_PREFIX.length) : h; }
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const USE_KEYS = ["open","habitTap","earned","tmr1","reflection","energy","tasksBtn","calBtn","dash","theme"];
@@ -353,7 +363,10 @@ try{ usage = JSON.parse(localStorage.getItem("z1use-" + new Date().toISOString()
 const $ = s => document.querySelector(s);
 const dlg = document.getElementById("dlg");
 const dlgHabits = document.getElementById("dlgHabits");
+const dlgRefl = document.getElementById("dlgRefl");
 let editHabits = [];
+let editRefl = [];
+let reflFields = [];
 
 function fmt(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 function todayStr(){ return fmt(new Date()); }
@@ -467,7 +480,8 @@ function hydrateFromCache(){
     if (!c || !c.headers || !c.headers.length) return;
     headers = c.headers; rowsCache = c.rowsCache || [];
     targets = c.targets || {}; targetRows = c.targetRows || [];
-    habits = headers.filter(h => !FIXED.includes(h));
+    habits = headers.filter(h => !FIXED.includes(h) && !isReflHeader(h));
+    reflFields = headers.filter(isReflHeader);
     const idx = rowsCache.findIndex(r => (r[0]||"") === todayStr());
     if (idx >= 0){ sheetRowIndex = idx + 2; today = parseRow(rowsCache[idx]); }
     else { sheetRowIndex = null; today = blankDay(); }
@@ -520,7 +534,7 @@ async function createSheet(){
   if (!tokenValid()){ signIn(); return; }
   try{
     toast("Creating sheet…", 1500);
-    const HEADERS = ["Date","Day", ...DEFAULT_HABITS, "Earned Today","Tomorrow #1","Wins","Learnings","Problems","Energy"];
+    const HEADERS = ["Date","Day", ...DEFAULT_HABITS, "Earned Today","Tomorrow #1", ...DEFAULT_REFL, "Energy"];
     const body = {
       properties: { title: "zerO 1 — Daily Growth Log" },
       sheets: [
@@ -547,8 +561,10 @@ async function createSheet(){
 async function ensureSchema(){
   const missing = FIXED.filter(h => !headers.includes(h) && h !== "Date" && h !== "Day");
   if (!headers.includes("Date")) return;
-  if (missing.length){
-    headers = headers.concat(missing);
+  let changed = false;
+  if (missing.length){ headers = headers.concat(missing); changed = true; }
+  if (!headers.some(isReflHeader)){ headers = headers.concat(DEFAULT_REFL); changed = true; }
+  if (changed){
     await api(SBASE() + "/values/" + encodeURIComponent("Log!A1") + "?valueInputOption=RAW",
       { method: "PUT", body: JSON.stringify({ values: [headers] }) });
   }
@@ -578,14 +594,15 @@ async function loadData(){
     setStatus(rowsCache.length ? "Syncing…" : "Loading…");
     const js = await api(SBASE() + "/values/" + encodeURIComponent("Log!A1:AZ3000"));
     const v = js.values || [];
-    headers = v[0] && v[0].length ? v[0] : ["Date","Day", ...DEFAULT_HABITS, "Earned Today","Tomorrow #1","Wins","Learnings","Problems","Energy"];
+    headers = v[0] && v[0].length ? v[0] : ["Date","Day", ...DEFAULT_HABITS, "Earned Today","Tomorrow #1", ...DEFAULT_REFL, "Energy"];
     if (!(v[0] && v[0].length)){
       await api(SBASE() + "/values/" + encodeURIComponent("Log!A1") + "?valueInputOption=RAW",
         { method: "PUT", body: JSON.stringify({ values: [headers] }) });
     }
     rowsCache = v.slice(1);
     await ensureSchema();
-    habits = headers.filter(h => !FIXED.includes(h));
+    habits = headers.filter(h => !FIXED.includes(h) && !isReflHeader(h));
+    reflFields = headers.filter(isReflHeader);
     const t = todayStr();
     const idx = rowsCache.findIndex(r => (r[0]||"") === t);
     if (idx >= 0){ sheetRowIndex = idx + 2; today = parseRow(rowsCache[idx]); }
@@ -603,20 +620,19 @@ async function loadData(){
   }
 }
 function blankDay(){
-  const o = { checks:{}, earned:"", tmr1:"", wins:"", learnings:"", problems:"", energy:"" };
+  const o = { checks:{}, earned:"", tmr1:"", refl:{}, energy:"" };
   habits.forEach(h => o.checks[h] = false);
+  reflFields.forEach(h => o.refl[h] = "");
   return o;
 }
 function parseRow(r){
-  const o = { checks:{}, earned:"", tmr1:"", wins:"", learnings:"", problems:"", energy:"" };
+  const o = { checks:{}, earned:"", tmr1:"", refl:{}, energy:"" };
   headers.forEach((h,i)=>{
     const val = r[i] === undefined ? "" : String(r[i]);
     if (h === "Earned Today") o.earned = val;
     else if (h === "Tomorrow #1") o.tmr1 = val;
-    else if (h === "Wins") o.wins = val;
-    else if (h === "Learnings") o.learnings = val;
-    else if (h === "Problems") o.problems = val;
     else if (h === "Energy") o.energy = val;
+    else if (isReflHeader(h)) o.refl[h] = val;
     else if (!FIXED.includes(h)) o.checks[h] = (val.toUpperCase() === "TRUE");
   });
   return o;
@@ -627,10 +643,8 @@ function buildRow(){
     if (h === "Day") return DAYS[new Date().getDay()];
     if (h === "Earned Today") return today.earned === "" ? "" : String(today.earned);
     if (h === "Tomorrow #1") return today.tmr1 || "";
-    if (h === "Wins") return today.wins || "";
-    if (h === "Learnings") return today.learnings || "";
-    if (h === "Problems") return today.problems || "";
     if (h === "Energy") return today.energy || "";
+    if (isReflHeader(h)) return today.refl[h] || "";
     return today.checks[h] ? "TRUE" : "FALSE";
   });
 }
@@ -664,14 +678,16 @@ function markDirty(){
   setStatus("Saving…");
   flushSave(false);
 }
-function onField(k, v){ today[k] = v; bump((k==="wins"||k==="learnings"||k==="problems") ? "reflection" : k); markDirty(); }
+function onField(k, v){ today[k] = v; bump(k); markDirty(); }
 function setEnergy(v){ today.energy = (today.energy === v) ? "" : v; bump("energy"); renderEnergy(); markDirty(); }
 
 /* ---------- today render ---------- */
 function renderToday(){
   const d = new Date();
   $("#dateline").textContent = DAYS[d.getDay()] + ", " + d.toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" }) + " — every step is a brick in the 10Cr";
-  $("#editHabitsBtn").style.display = (d.getDay() === 0) ? "" : "none";
+  const isSunday = d.getDay() === 0;
+  $("#editHabitsBtn").style.display = isSunday ? "" : "none";
+  $("#editReflBtn").style.display = isSunday ? "" : "none";
   const list = $("#habits"); list.innerHTML = "";
   habits.forEach(h=>{
     const div = document.createElement("div");
@@ -685,12 +701,32 @@ function renderToday(){
   $("#pct").textContent = done + "/" + habits.length;
   setVal("#in-earned", today.earned);
   setVal("#in-tmr", today.tmr1);
-  setVal("#in-wins", today.wins);
-  setVal("#in-learn", today.learnings);
-  setVal("#in-prob", today.problems);
+  renderReflFields();
   renderEnergy();
   $("#streak").textContent = calcStreak();
   $("#sheetlink").href = "https://docs.google.com/spreadsheets/d/" + cfg.sheetId;
+}
+function renderReflFields(){
+  const box = $("#reflFieldsBox"); if (!box) return;
+  // Only rebuilds when the set of fields actually changed, so typing never gets interrupted.
+  const sig = reflFields.join("|");
+  if (box.dataset.sig !== sig){
+    box.innerHTML = "";
+    reflFields.forEach((h,i)=>{
+      const label = document.createElement("label");
+      label.className = "f"; if (i === 0) label.style.marginTop = "0";
+      label.textContent = reflLabel(h);
+      const ta = document.createElement("textarea");
+      ta.rows = 2; ta.dataset.h = h;
+      ta.oninput = ()=>{ today.refl[h] = ta.value; bump("reflection"); markDirty(); };
+      box.appendChild(label); box.appendChild(ta);
+    });
+    box.dataset.sig = sig;
+  }
+  box.querySelectorAll("textarea").forEach(ta=>{
+    const h = ta.dataset.h;
+    if (document.activeElement !== ta) ta.value = (today.refl && today.refl[h]) || "";
+  });
 }
 function setVal(sel, v){ const e = $(sel); if (document.activeElement !== e) e.value = v || ""; }
 function renderEnergy(){
@@ -709,18 +745,25 @@ function openEditHabits(){
 }
 function renderHabitEditList(){
   const list = $("#habitEditList"); list.innerHTML = "";
-  const counts = {};
-  editHabits.forEach(e=>{ const n = e.name.trim(); if (n) counts[n] = (counts[n]||0) + 1; });
   editHabits.forEach((e,i)=>{
     const row = document.createElement("div");
     row.className = "addrow"; row.style.marginBottom = "6px";
-    const isDup = e.name.trim() && counts[e.name.trim()] > 1;
-    if (isDup) row.classList.add("habit-dup");
     row.innerHTML = '<input type="text" style="flex:1"><button class="btn ghost" style="padding:6px 10px">✕</button>';
     const inp = row.querySelector("input"); inp.value = e.name;
-    inp.oninput = ()=>{ editHabits[i].name = inp.value; renderHabitEditList(); };
+    inp.oninput = ()=>{ editHabits[i].name = inp.value; updateHabitDupHighlights(); };
     row.querySelector("button").onclick = ()=>{ editHabits.splice(i,1); renderHabitEditList(); };
     list.appendChild(row);
+  });
+  updateHabitDupHighlights();
+}
+function updateHabitDupHighlights(){
+  // Only toggles classes/warning text — never touches the <input> nodes, so typing never loses focus.
+  const list = $("#habitEditList");
+  const counts = {};
+  editHabits.forEach(e=>{ const n = e.name.trim(); if (n) counts[n] = (counts[n]||0) + 1; });
+  Array.from(list.children).forEach((row,i)=>{
+    const n = (editHabits[i] && editHabits[i].name.trim()) || "";
+    row.classList.toggle("habit-dup", !!n && counts[n] > 1);
   });
   const dupCount = Object.values(counts).filter(c=>c>1).length;
   let warn = $("#habitDupWarn");
@@ -754,7 +797,7 @@ async function saveHabitEdits(){
     seen[n] = true; e.name = n;
   });
   const names = cleaned.map(e=>e.name);
-  if (names.some(n=>FIXED.includes(n))){ toast("A habit name clashes with a fixed column — rename it"); return; }
+  if (names.some(n=>FIXED.includes(n) || reflFields.some(rf=>reflLabel(rf)===n))){ toast("A habit name clashes with a fixed column or reflection field — rename it"); return; }
   if (!tokenValid()){ toast("Signing you in — tap Save again after"); signIn(); return; }
   try{
     toast("Saving habit changes…", 1500);
@@ -785,6 +828,93 @@ async function saveHabitEdits(){
     renderToday();
     markDirty();
     toast("Habits updated ✓");
+  }catch(e){ toast(e.message); }
+}
+
+/* ---------- edit reflection fields (Sundays only) ---------- */
+function openEditRefl(){
+  if (new Date().getDay() !== 0){ toast("Reflection editing opens on Sundays"); return; }
+  editRefl = reflFields.map(h => ({ orig: h, name: reflLabel(h) }));
+  $("#newReflName").value = "";
+  renderReflEditList();
+  dlgRefl.showModal();
+}
+function renderReflEditList(){
+  const list = $("#reflEditList"); list.innerHTML = "";
+  editRefl.forEach((e,i)=>{
+    const row = document.createElement("div");
+    row.className = "addrow"; row.style.marginBottom = "6px";
+    row.innerHTML = '<input type="text" style="flex:1"><button class="btn ghost" style="padding:6px 10px">✕</button>';
+    const inp = row.querySelector("input"); inp.value = e.name;
+    inp.oninput = ()=>{ editRefl[i].name = inp.value; updateReflDupHighlights(); };
+    row.querySelector("button").onclick = ()=>{ editRefl.splice(i,1); renderReflEditList(); };
+    list.appendChild(row);
+  });
+  updateReflDupHighlights();
+}
+function updateReflDupHighlights(){
+  // Only toggles classes — never touches the <input> nodes, so typing never loses focus.
+  const list = $("#reflEditList");
+  const counts = {};
+  editRefl.forEach(e=>{ const n = e.name.trim(); if (n) counts[n] = (counts[n]||0) + 1; });
+  Array.from(list.children).forEach((row,i)=>{
+    const n = (editRefl[i] && editRefl[i].name.trim()) || "";
+    row.classList.toggle("habit-dup", !!n && counts[n] > 1);
+  });
+}
+function addReflRow(){
+  const v = $("#newReflName").value.trim();
+  if (!v) return;
+  if (editRefl.some(e=>e.name===v)){ toast("Already in list"); return; }
+  editRefl.push({ orig: null, name: v });
+  $("#newReflName").value = "";
+  renderReflEditList();
+}
+async function saveReflEdits(){
+  const cleaned = editRefl.map(e=>({ orig:e.orig, name:e.name.trim() })).filter(e=>e.name);
+  if (!cleaned.length){ toast("Add at least one reflection field"); return; }
+  const seen = {};
+  cleaned.forEach(e=>{
+    let n = e.name, k = 2;
+    while (seen[n]){ n = e.name + " " + k; k++; }
+    seen[n] = true; e.name = n;
+  });
+  if (cleaned.some(e=>FIXED.includes(e.name) || habits.includes(e.name))){ toast("Name clashes with a fixed column or habit — rename it"); return; }
+  if (!tokenValid()){ toast("Signing you in — tap Save again after"); signIn(); return; }
+  try{
+    toast("Saving reflection changes…", 1500);
+    const removed = reflFields.filter(h => !cleaned.some(e=>e.orig===h));
+    if (removed.length){
+      const meta = await api(SBASE() + "?fields=sheets.properties");
+      const logSheet = (meta.sheets||[]).find(s=>s.properties.title==="Log");
+      const logId = logSheet && logSheet.properties.sheetId;
+      const idxs = removed.map(h=>headers.indexOf(h)).filter(i=>i>=0).sort((a,b)=>b-a);
+      const req = idxs.map(i=>({ deleteDimension: { range: { sheetId: logId, dimension:"COLUMNS", startIndex:i, endIndex:i+1 } } }));
+      if (req.length) await api(SBASE() + ":batchUpdate", { method:"POST", body: JSON.stringify({ requests: req }) });
+      idxs.forEach(i=> headers.splice(i,1));
+    }
+    cleaned.forEach(e=>{
+      const newHeader = REFL_PREFIX + e.name;
+      if (e.orig){
+        const i = headers.indexOf(e.orig);
+        if (i>=0) headers[i] = newHeader;
+      } else if (!headers.includes(newHeader)){
+        headers.push(newHeader);
+      }
+    });
+    await api(SBASE() + "/values/" + encodeURIComponent("Log!A1") + "?valueInputOption=RAW",
+      { method:"PUT", body: JSON.stringify({ values:[headers] }) });
+    const newTodayRefl = {};
+    cleaned.forEach(e=>{
+      const newHeader = REFL_PREFIX + e.name;
+      newTodayRefl[newHeader] = e.orig ? (today.refl[e.orig] || "") : "";
+    });
+    today.refl = newTodayRefl;
+    reflFields = headers.filter(isReflHeader);
+    dlgRefl.close();
+    renderToday();
+    markDirty();
+    toast("Reflection fields updated ✓");
   }catch(e){ toast(e.message); }
 }
 
@@ -856,14 +986,15 @@ function dayMap(){
     headers.forEach((h,i)=>{
       const v = r[i] === undefined ? "" : String(r[i]);
       if (h === "Earned Today") earned = parseFloat(v) || 0;
-      else if (!FIXED.includes(h) && v.toUpperCase() === "TRUE") checked++;
+      else if (!FIXED.includes(h) && !isReflHeader(h) && v.toUpperCase() === "TRUE") checked++;
     });
     map[dt] = { checked, earned, real: rowIsReal(r) };
   });
   const t = todayStr();
   const checked = habits.filter(h=>today && today.checks[h]).length;
   const earned = today ? (parseFloat(today.earned) || 0) : 0;
-  const real = (map[t] && map[t].real) || checked > 0 || earned > 0 || !!(today && ((today.tmr1||"").trim() || (today.wins||"").trim()));
+  const hasRefl = !!(today && today.refl && Object.values(today.refl).some(v => (v||"").trim()));
+  const real = (map[t] && map[t].real) || checked > 0 || earned > 0 || hasRefl || !!(today && (today.tmr1||"").trim());
   map[t] = { checked, earned, real };
   return map;
 }
@@ -871,7 +1002,7 @@ function rowIsReal(r){
   return headers.some((h,i)=>{
     const v = r[i] === undefined ? "" : String(r[i]);
     if (h === "Earned Today") return parseFloat(v) > 0;
-    if (["Tomorrow #1","Wins","Learnings","Problems"].includes(h)) return v.trim().length > 0;
+    if (h === "Tomorrow #1" || isReflHeader(h)) return v.trim().length > 0;
     if (FIXED.includes(h)) return false;
     return v.toUpperCase() === "TRUE";
   });
@@ -1069,10 +1200,10 @@ async function applyTheme(silent){
       let w = 120;
       if (h === "Date") w = 96; else if (h === "Day") w = 56;
       else if (h === "Earned Today") w = 110; else if (h === "Energy") w = 90;
-      else if (["Tomorrow #1","Wins","Learnings","Problems"].includes(h)) w = 240;
+      else if (h === "Tomorrow #1" || isReflHeader(h)) w = 240;
       req.push({ updateDimensionProperties: { range: { sheetId: logId, dimension: "COLUMNS", startIndex: i, endIndex: i+1 },
         properties: { pixelSize: w }, fields: "pixelSize" } });
-      if (!FIXED.includes(h)) habitRanges.push(colRange(i));
+      if (!FIXED.includes(h) && !isReflHeader(h)) habitRanges.push(colRange(i));
     });
     if (habitRanges.length){
       req.push({ addConditionalFormatRule: { index: 0, rule: { ranges: habitRanges,
