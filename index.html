@@ -284,8 +284,12 @@
       <button class="btn ghost" onclick="signOut()">Sign out</button>
     </div>
     <div class="btns"><button class="btn" onclick="copySetupLink()">📲 Copy setup link for other device</button></div>
-    <label class="f">App PIN (blank = keep, OFF = remove)</label>
-    <input type="text" id="set-pin" inputmode="numeric" autocomplete="off" placeholder="4–8 digits">
+    <label class="f">App PIN</label>
+    <div class="note" id="pin-status" style="margin:-2px 0 8px"></div>
+    <input type="text" id="set-pin" inputmode="numeric" autocomplete="off" placeholder="4–8 digits — leave blank to keep">
+    <div class="btns" id="pin-remove-row" style="display:none; margin-top:8px">
+      <button class="btn ghost" type="button" onclick="removePin()">🔓 Remove PIN</button>
+    </div>
     <details>
       <summary>Advanced</summary>
       <label class="f">OAuth Client ID</label>
@@ -1178,13 +1182,25 @@ function openSettings(){
   $("#set-clientid").value = cfg.clientId || "";
   $("#set-sheetid").value = cfg.sheetId || "";
   $("#set-pin").value = "";
+  refreshPinStatus();
   dlg.showModal();
+}
+function refreshPinStatus(){
+  const on = !!localStorage.getItem("z1pin");
+  $("#pin-status").textContent = on ? "Currently ON" : "Currently OFF";
+  $("#pin-remove-row").style.display = on ? "flex" : "none";
+}
+function removePin(){
+  localStorage.removeItem("z1pin");
+  sessionStorage.removeItem("z1unlocked");
+  toast("PIN removed ✓");
+  refreshPinStatus();
 }
 async function saveSettings(){
   const p = $("#set-pin").value.trim();
   if (p){
     if (p.toUpperCase() === "OFF"){ localStorage.removeItem("z1pin"); toast("PIN removed"); }
-    else if (!/^\d{4,8}$/.test(p)){ toast("PIN must be 4–8 digits (or OFF)"); return; }
+    else if (!/^\d{4,8}$/.test(p)){ toast("PIN must be 4–8 digits"); return; }
     else { localStorage.setItem("z1pin", await sha256(p)); sessionStorage.setItem("z1unlocked","1"); }
   }
   cfg.clientId = cleanClientId($("#set-clientid").value);
