@@ -129,8 +129,9 @@
   .foot{text-align:center; margin-top:8px}
   .foot a{color:var(--mut2); font-size:12px; text-decoration:none}
   dialog{background:var(--card2); color:var(--tx); border:1px solid var(--border); border-radius:16px;
-    padding:18px; width:min(92vw,440px)}
+    padding:18px; width:min(92vw,440px); max-height:82vh; overflow-y:auto}
   dialog::backdrop{background:rgba(0,0,0,.72)}
+  .habit-dup input{border-color:var(--pink); box-shadow:0 0 0 2px rgba(255,158,196,.18)}
   .toast{position:fixed; bottom:86px; left:50%; transform:translateX(-50%); background:#191922;
     border:1px solid var(--border); color:var(--tx); padding:10px 16px; border-radius:10px; font-size:14px;
     opacity:0; transition:opacity .25s; pointer-events:none; max-width:90vw; z-index:99}
@@ -704,15 +705,31 @@ function openEditHabits(){
 }
 function renderHabitEditList(){
   const list = $("#habitEditList"); list.innerHTML = "";
+  const counts = {};
+  editHabits.forEach(e=>{ const n = e.name.trim(); if (n) counts[n] = (counts[n]||0) + 1; });
   editHabits.forEach((e,i)=>{
     const row = document.createElement("div");
     row.className = "addrow"; row.style.marginBottom = "6px";
+    const isDup = e.name.trim() && counts[e.name.trim()] > 1;
+    if (isDup) row.classList.add("habit-dup");
     row.innerHTML = '<input type="text" style="flex:1"><button class="btn ghost" style="padding:6px 10px">✕</button>';
     const inp = row.querySelector("input"); inp.value = e.name;
-    inp.oninput = ()=>{ editHabits[i].name = inp.value; };
+    inp.oninput = ()=>{ editHabits[i].name = inp.value; renderHabitEditList(); };
     row.querySelector("button").onclick = ()=>{ editHabits.splice(i,1); renderHabitEditList(); };
     list.appendChild(row);
   });
+  const dupCount = Object.values(counts).filter(c=>c>1).length;
+  let warn = $("#habitDupWarn");
+  if (dupCount){
+    if (!warn){
+      warn = document.createElement("div");
+      warn.id = "habitDupWarn";
+      warn.className = "note";
+      warn.style.color = "var(--pink)";
+      list.parentNode.insertBefore(warn, list.nextSibling);
+    }
+    warn.textContent = "⚠ Duplicate names highlighted — Save will auto-number them (e.g. \"" + Object.keys(counts).find(k=>counts[k]>1) + " 2\") unless you rename first.";
+  } else if (warn) warn.remove();
 }
 function addHabitRow(){
   const v = $("#newHabitName").value.trim();
@@ -724,11 +741,17 @@ function addHabitRow(){
 }
 async function saveHabitEdits(){
   const cleaned = editHabits.map(e=>({ orig:e.orig, name:e.name.trim() })).filter(e=>e.name);
+  if (!cleaned.length){ toast("Add at least one habit"); return; }
+  // auto-number duplicates instead of silently blocking save
+  const seen = {};
+  cleaned.forEach(e=>{
+    let n = e.name, k = 2;
+    while (seen[n]){ n = e.name + " " + k; k++; }
+    seen[n] = true; e.name = n;
+  });
   const names = cleaned.map(e=>e.name);
-  if (!names.length){ toast("Add at least one habit"); return; }
-  if (names.some((n,i)=>names.indexOf(n)!==i)){ toast("Duplicate habit names"); return; }
-  if (names.some(n=>FIXED.includes(n))){ toast("Name clashes with a fixed column"); return; }
-  if (!tokenValid()){ signIn(); return; }
+  if (names.some(n=>FIXED.includes(n))){ toast("A habit name clashes with a fixed column — rename it"); return; }
+  if (!tokenValid()){ toast("Signing you in — tap Save again after"); signIn(); return; }
   try{
     toast("Saving habit changes…", 1500);
     const removedNames = habits.filter(h => !cleaned.some(e=>e.orig===h));
